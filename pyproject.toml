@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paper-research-agent"
-version = "0.6.1"
+version = "0.6.2"
 description = "A full-stack computer-science research workbench with human screening, reproducibility analysis, and auditable evidence workflows."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -33,7 +33,12 @@ all = [
   "pydantic>=2.7,<3",
   "pypdf>=5,<7",
 ]
-dev = ["pytest>=8,<10", "ruff>=0.9,<1", "httpx2>=0.1,<1"]
+dev = [
+  "pytest>=8,<10",
+  "ruff>=0.9,<1",
+  "httpx>=0.27,<1",
+  "httpx2>=2,<3",
+]
 
 [project.scripts]
 paper-agent = "paper_agent.cli:main"

@@ -65,7 +65,7 @@ export function AppShell() {
         </nav>
         <footer className="sidebar__footer">
           <span className="local-dot" />
-          本地工作区 · v0.6.1
+          本地工作区 · v0.6.2
         </footer>
       </aside>
       <main className="main-surface">

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2
+
+- 修复错误的 `httpx2<1` 约束；开发环境同时覆盖旧版 Starlette 的 `httpx`
+  与新版 TestClient 的 `httpx2>=2`，干净环境可正常安装 `.[all,dev]`。
+- GitHub Actions 更新到 Node 24 运行时的 checkout、setup-python 与 setup-node 主版本。
+- 重新验证公开仓库 CI，而不依赖开发机中已预装的测试包。
+
 ## 0.6.1
 
 - 建立正式 GitHub 仓库元数据，补充主页、源码、文档与问题反馈地址。

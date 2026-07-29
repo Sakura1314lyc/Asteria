@@ -59,7 +59,7 @@ def create_app(settings: Settings | None = None):
 
     app = FastAPI(
         title="Paper Research Agent API",
-        version="0.6.1",
+        version="0.6.2",
         description=(
             "Local-first API for literature discovery, screening, evidence "
             "extraction, quality appraisal, full-text search, and report generation."
@@ -213,7 +213,7 @@ def create_app(settings: Settings | None = None):
         )
         return {
             "status": "ok",
-            "version": "0.6.1",
+            "version": "0.6.2",
             "database": str(active_settings.database_path),
             "specialization": "computer_science",
             "web_available": (configured_web / "index.html").is_file(),

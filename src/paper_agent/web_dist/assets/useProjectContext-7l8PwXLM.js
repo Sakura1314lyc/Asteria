@@ -1,0 +1,1 @@
+import{y as e}from"./index-Dkt1ghRK.js";function t(){return e()}export{t};
