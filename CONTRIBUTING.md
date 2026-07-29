@@ -21,4 +21,3 @@ python -m pip wheel --no-deps .
 ## Pull Request
 
 说明问题、设计选择、数据迁移、测试和证据边界。涉及数据库 schema 时必须提供向前迁移方案。
-
