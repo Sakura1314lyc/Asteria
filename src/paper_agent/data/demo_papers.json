@@ -1,0 +1,55 @@
+{
+  "note": "Synthetic records for offline workflow testing only; not scholarly sources.",
+  "papers": [
+    {
+      "title": "Planning Patterns for Evidence-Grounded Research Agents",
+      "authors": ["Demo Author A", "Demo Author B"],
+      "year": 2025,
+      "abstract": "This synthetic study compares linear and iterative planning patterns for research agents. It reports that explicit evidence checkpoints improve traceability in the demonstration setting, while additional tool calls increase latency.",
+      "url": "https://example.org/demo/planning",
+      "venue": "Synthetic Agent Research Workshop",
+      "citation_count": 12,
+      "source": "fixture"
+    },
+    {
+      "title": "Citation Auditing in Automated Literature Reviews",
+      "authors": ["Demo Author C"],
+      "year": 2024,
+      "abstract": "This synthetic paper describes structural checks for citation coverage in machine-generated literature reviews. Structural coverage detects missing citation markers but cannot establish whether a source semantically supports a claim.",
+      "url": "https://example.org/demo/citations",
+      "venue": "Synthetic Scholarly Systems",
+      "citation_count": 18,
+      "source": "fixture"
+    },
+    {
+      "title": "Multi-Perspective Question Generation for Literature Discovery",
+      "authors": ["Demo Author D", "Demo Author E"],
+      "year": 2023,
+      "abstract": "This synthetic experiment organizes literature searches around theory, methods, empirical results, and limitations. The demonstration finds broader topical coverage than a single undifferentiated query, with lower precision for peripheral questions.",
+      "url": "https://example.org/demo/perspectives",
+      "venue": "Synthetic Information Retrieval Conference",
+      "citation_count": 25,
+      "source": "fixture"
+    },
+    {
+      "title": "Abstract-Only Evidence Extraction: Boundaries and Failure Modes",
+      "authors": ["Demo Author F"],
+      "year": 2022,
+      "abstract": "This synthetic analysis catalogues failure modes in abstract-only evidence extraction. Missing sample details, selective reporting, and absent appendices limit the reliability of downstream synthesis.",
+      "url": "https://example.org/demo/abstracts",
+      "venue": "Synthetic Evidence Journal",
+      "citation_count": 31,
+      "source": "fixture"
+    },
+    {
+      "title": "Reproducible State Machines for Long-Running Academic Agents",
+      "authors": ["Demo Author G", "Demo Author H"],
+      "year": 2025,
+      "abstract": "This synthetic system report stores planning, retrieval, extraction, writing, and audit states as inspectable artifacts. Checkpointed stages support recovery after interruption and simplify evaluation of individual pipeline components.",
+      "url": "https://example.org/demo/state-machines",
+      "venue": "Synthetic Reproducible AI",
+      "citation_count": 7,
+      "source": "fixture"
+    }
+  ]
+}

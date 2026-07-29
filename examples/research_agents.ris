@@ -1,0 +1,48 @@
+TY  - JOUR
+TI  - Assisting in Writing Wikipedia-like Articles From Scratch with Large Language Models
+AU  - Shao, Yijia
+AU  - Jiang, Yucheng
+AU  - Kanell, Theodore A.
+AU  - Xu, Peter
+AU  - Khattab, Omar
+AU  - Lam, Monica S.
+PY  - 2024
+AB  - STORM studies retrieval and multi-perspective questioning for grounded long-form article planning.
+UR  - https://arxiv.org/abs/2402.14207
+AN  - arXiv:2402.14207
+KW  - research agents
+KW  - retrieval augmented generation
+ER  -
+TY  - JOUR
+TI  - Language agents achieve superhuman synthesis of scientific knowledge
+AU  - Skarlinski, Michael D.
+AU  - Cox, Sam
+AU  - Laurent, Jon M.
+AU  - White, Andrew D.
+PY  - 2024
+AB  - PaperQA2 is evaluated on literature retrieval, cited synthesis, and contradiction detection.
+UR  - https://arxiv.org/abs/2409.13740
+AN  - arXiv:2409.13740
+KW  - scientific question answering
+KW  - citation grounding
+ER  -
+TY  - JOUR
+TI  - OpenScholar: Synthesizing Scientific Literature with Retrieval-augmented LMs
+AU  - Asai, Akari
+AU  - He, Jacqueline
+AU  - Shao, Rulin
+AU  - Hajishirzi, Hannaneh
+PY  - 2024
+AB  - OpenScholar retrieves passages from scientific papers and produces citation-backed answers.
+UR  - https://arxiv.org/abs/2411.14199
+AN  - arXiv:2411.14199
+KW  - literature synthesis
+KW  - retrieval augmented generation
+ER  -
+TY  - JOUR
+TI  - OpenScholar: Synthesizing Scientific Literature with Retrieval-augmented LMs
+AU  - Asai, Akari
+PY  - 2024
+UR  - https://arxiv.org/abs/2411.14199
+AN  - arXiv:2411.14199
+ER  -

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title desc">
+  <title id="title">Asteria</title>
+  <desc id="desc">An abstract letter A built from three connected evidence nodes.</desc>
+  <rect x=".75" y=".75" width="30.5" height="30.5" rx="7" fill="#0969da" stroke="#ffffff" stroke-opacity=".2"/>
+  <path d="M8.25 24.25 15.15 7.7a.92.92 0 0 1 1.7 0l6.9 16.55M11.25 18.1h9.5" fill="none" stroke="#f0f6fc" stroke-width="2.15" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="16" cy="7.2" r="2.15" fill="#79c0ff" stroke="#f0f6fc"/>
+  <circle cx="8.1" cy="24.55" r="1.75" fill="#f0f6fc"/>
+  <circle cx="23.9" cy="24.55" r="1.75" fill="#f0f6fc"/>
+  <path d="M13.45 18.1h5.1" fill="none" stroke="#ffffff" stroke-width="2.25" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,1 @@
+import{y as e}from"./index-CGWL6RIs.js";function t(){return e()}export{t};

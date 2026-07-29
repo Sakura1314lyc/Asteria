@@ -1,0 +1,172 @@
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowRight,
+  BookCheck,
+  Plus,
+  Sparkles
+} from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { api } from "../api/client";
+import type { Project, Run } from "../api/types";
+import { RunStageRail } from "../components/RunStageRail";
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  SectionTitle,
+  Stat,
+  StatusBadge
+} from "../components/Ui";
+
+function latestRun(project: Project): Run | undefined {
+  return project.runs?.[0];
+}
+
+export function DashboardPage() {
+  const navigate = useNavigate();
+  const projects = useQuery({
+    queryKey: ["projects"],
+    queryFn: api.listProjects
+  });
+  const jobs = useQuery({
+    queryKey: ["jobs"],
+    queryFn: api.listJobs,
+    refetchInterval: (state) =>
+      state.state.data?.some((job) =>
+        ["queued", "running"].includes(job.status)
+      )
+        ? 2000
+        : false
+  });
+
+  if (projects.isLoading) return <LoadingState label="正在恢复你的研究工作台" />;
+  if (projects.isError) {
+    return <ErrorState error={projects.error} retry={() => projects.refetch()} />;
+  }
+
+  const items = projects.data ?? [];
+  const totalPapers = items.reduce(
+    (sum, project) => sum + (project.stats?.total ?? 0),
+    0
+  );
+  const pending = items.reduce(
+    (sum, project) => sum + (project.stats?.pending ?? 0),
+    0
+  );
+  const activeJobs =
+    jobs.data?.filter((job) => ["queued", "running"].includes(job.status)) ?? [];
+
+  return (
+    <div className="dashboard page-pad">
+      <header className="dashboard-hero">
+        <div className="dashboard-hero__copy">
+          <h1>研究工作台</h1>
+          <p>
+            {activeJobs.length > 0
+              ? `${activeJobs.length} 个研究任务正在运行`
+              : "整理项目、筛选文献并检查研究证据。"}
+          </p>
+        </div>
+        <div className="dashboard-hero__actions">
+          <Button onClick={() => navigate("/projects?new=1")}>
+            <Plus size={16} /> 新建研究
+          </Button>
+          <Button variant="secondary" onClick={() => navigate("/projects")}>
+            全部项目
+          </Button>
+        </div>
+      </header>
+
+      <section className="metric-ribbon dashboard-summary" aria-label="研究状态摘要">
+        <Stat value={items.length} label="研究项目" />
+        <Stat value={totalPapers} label="候选论文" />
+        <Stat value={pending} label="待筛选" />
+        <Stat
+          value={activeJobs.length}
+          label="运行中"
+          hint={new Date().toLocaleDateString("zh-CN")}
+        />
+      </section>
+
+      {pending > 0 && (
+        <Link className="attention-strip" to="/projects">
+          <BookCheck size={19} />
+          <div>
+            <strong>还有 {pending} 篇论文等待人工判断</strong>
+            <span>系统不会替你静默排除论文，打开项目继续筛选。</span>
+          </div>
+          <ArrowRight size={17} />
+        </Link>
+      )}
+
+      <section className="dashboard-section">
+        <SectionTitle
+          title="最近的研究"
+          detail="每个项目保留独立的方案、论文库和运行历史。"
+          action={
+            <Link className="text-link" to="/projects">
+              全部项目 <ArrowRight size={14} />
+            </Link>
+          }
+        />
+        {items.length === 0 ? (
+          <EmptyState
+            title="从第一个研究问题开始"
+            detail="创建项目后，可以先使用内置合成语料跑通完整流程，再接入真实模型与检索源。"
+            icon={<Sparkles size={23} />}
+            action={
+              <Button onClick={() => navigate("/projects?new=1")}>
+                创建研究项目
+              </Button>
+            }
+          />
+        ) : (
+          <div className="research-ledger">
+            {items.slice(0, 6).map((project, index) => {
+              const run = latestRun(project);
+              return (
+                <Link
+                  to={`/projects/${project.id}`}
+                  className="research-ledger__row"
+                  key={project.id}
+                >
+                  <span className="research-ledger__index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div className="research-ledger__main">
+                    <div>
+                      <h3>{project.name}</h3>
+                      <p>{project.research_question}</p>
+                    </div>
+                    <div className="research-ledger__meta">
+                      <span>{project.review_type}</span>
+                      <span>{project.stats.total} papers</span>
+                      <span>{project.stats.documents} full text</span>
+                    </div>
+                  </div>
+                  <div className="research-ledger__run">
+                    {run ? (
+                      <>
+                        <StatusBadge status={run.status}>{run.status}</StatusBadge>
+                        <RunStageRail
+                          current={run.stage}
+                          failed={run.status === "failed"}
+                          compact
+                        />
+                      </>
+                    ) : (
+                      <span className="muted">尚未运行</span>
+                    )}
+                  </div>
+                  <ArrowRight size={17} />
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+    </div>
+  );
+}

@@ -1,0 +1,136 @@
+{
+  "version": "2026.1",
+  "sources": {
+    "arxiv": "https://arxiv.org/category_taxonomy",
+    "acm_ccs": "https://www.acm.org/publications/class-2012"
+  },
+  "domains": [
+    {
+      "id": "artificial_intelligence",
+      "name_en": "Artificial Intelligence and Machine Learning",
+      "name_zh": "人工智能与机器学习",
+      "arxiv_categories": ["cs.AI", "cs.LG", "cs.CL", "cs.CV", "cs.MA", "cs.NE"],
+      "keywords": ["artificial intelligence", "machine learning", "deep learning", "neural network", "foundation model", "large language model", "natural language processing", "computer vision", "reinforcement learning", "multi-agent", "representation learning", "生成模型", "大语言模型", "机器学习", "深度学习", "自然语言处理", "计算机视觉", "强化学习"],
+      "venue_hints": ["NeurIPS", "ICML", "ICLR", "AAAI", "IJCAI", "ACL", "EMNLP", "CVPR", "ICCV", "ECCV"],
+      "evidence_profile": "algorithm_benchmark"
+    },
+    {
+      "id": "computer_systems",
+      "name_en": "Computer Systems",
+      "name_zh": "计算机系统",
+      "arxiv_categories": ["cs.OS", "cs.DC", "cs.PF", "cs.AR"],
+      "keywords": ["operating system", "distributed system", "parallel computing", "cloud computing", "storage system", "fault tolerance", "consensus", "scheduler", "runtime system", "high performance computing", "操作系统", "分布式系统", "云计算", "存储系统", "高性能计算"],
+      "venue_hints": ["SOSP", "OSDI", "NSDI", "EuroSys", "USENIX ATC", "FAST", "SC", "HPDC"],
+      "evidence_profile": "systems_experiment"
+    },
+    {
+      "id": "networking",
+      "name_en": "Networks and Internet Architecture",
+      "name_zh": "计算机网络",
+      "arxiv_categories": ["cs.NI"],
+      "keywords": ["computer network", "network protocol", "internet architecture", "software-defined networking", "wireless network", "routing", "congestion control", "network measurement", "计算机网络", "网络协议", "无线网络", "路由", "拥塞控制"],
+      "venue_hints": ["SIGCOMM", "NSDI", "CoNEXT", "IMC", "MobiCom", "INFOCOM"],
+      "evidence_profile": "systems_experiment"
+    },
+    {
+      "id": "security_privacy",
+      "name_en": "Security, Privacy, and Cryptography",
+      "name_zh": "安全、隐私与密码学",
+      "arxiv_categories": ["cs.CR"],
+      "keywords": ["cybersecurity", "computer security", "privacy", "cryptography", "vulnerability", "malware", "authentication", "side channel", "attack", "defense", "网络安全", "隐私", "密码学", "漏洞", "恶意软件", "攻击", "防御"],
+      "venue_hints": ["IEEE S&P", "USENIX Security", "CCS", "NDSS", "CRYPTO", "EUROCRYPT"],
+      "evidence_profile": "security_evaluation"
+    },
+    {
+      "id": "data_management",
+      "name_en": "Data Management and Information Retrieval",
+      "name_zh": "数据管理与信息检索",
+      "arxiv_categories": ["cs.DB", "cs.IR", "cs.DL"],
+      "keywords": ["database", "data management", "query processing", "transaction", "data mining", "information retrieval", "search engine", "recommender system", "vector database", "数据库", "数据管理", "查询处理", "事务", "信息检索", "搜索引擎", "推荐系统"],
+      "venue_hints": ["SIGMOD", "VLDB", "ICDE", "PODS", "SIGIR", "KDD", "WSDM", "RecSys"],
+      "evidence_profile": "algorithm_system_hybrid"
+    },
+    {
+      "id": "software_engineering",
+      "name_en": "Software Engineering",
+      "name_zh": "软件工程",
+      "arxiv_categories": ["cs.SE"],
+      "keywords": ["software engineering", "software testing", "program repair", "code generation", "code review", "software maintenance", "mining software repositories", "developer productivity", "软件工程", "软件测试", "程序修复", "代码生成", "代码审查", "软件维护"],
+      "venue_hints": ["ICSE", "FSE", "ASE", "ISSTA", "MSR", "SANER"],
+      "evidence_profile": "empirical_software_engineering"
+    },
+    {
+      "id": "programming_languages",
+      "name_en": "Programming Languages and Formal Methods",
+      "name_zh": "程序设计语言与形式化方法",
+      "arxiv_categories": ["cs.PL", "cs.LO", "cs.FL"],
+      "keywords": ["programming language", "compiler", "type system", "program analysis", "formal verification", "model checking", "program semantics", "theorem proving", "程序设计语言", "编译器", "类型系统", "程序分析", "形式化验证", "模型检测"],
+      "venue_hints": ["POPL", "PLDI", "OOPSLA", "ICFP", "CAV", "LICS"],
+      "evidence_profile": "theory_tool"
+    },
+    {
+      "id": "theory_algorithms",
+      "name_en": "Theory, Algorithms, and Discrete Mathematics",
+      "name_zh": "理论计算机与算法",
+      "arxiv_categories": ["cs.CC", "cs.DS", "cs.DM", "cs.CG", "cs.GT", "cs.IT"],
+      "keywords": ["algorithm", "data structure", "computational complexity", "approximation algorithm", "randomized algorithm", "graph algorithm", "online algorithm", "lower bound", "proof", "算法", "数据结构", "计算复杂性", "近似算法", "随机算法", "图算法", "下界", "证明"],
+      "venue_hints": ["STOC", "FOCS", "SODA", "ICALP", "ITCS", "SoCG"],
+      "evidence_profile": "theory"
+    },
+    {
+      "id": "human_centered_computing",
+      "name_en": "Human-Centered Computing and Computing in Society",
+      "name_zh": "人机交互与计算社会",
+      "arxiv_categories": ["cs.HC", "cs.CY", "cs.SI"],
+      "keywords": ["human-computer interaction", "user study", "usability", "accessibility", "computer-supported cooperative work", "social computing", "computing ethics", "人机交互", "用户研究", "可用性", "无障碍", "社会计算", "计算伦理"],
+      "venue_hints": ["CHI", "UIST", "CSCW", "IUI", "DIS", "FAccT"],
+      "evidence_profile": "user_study"
+    },
+    {
+      "id": "graphics_multimedia",
+      "name_en": "Graphics, Multimedia, and Sound",
+      "name_zh": "图形学、多媒体与声音",
+      "arxiv_categories": ["cs.GR", "cs.MM", "cs.SD"],
+      "keywords": ["computer graphics", "rendering", "animation", "geometric modeling", "multimedia", "audio processing", "speech synthesis", "virtual reality", "augmented reality", "计算机图形学", "渲染", "动画", "多媒体", "音频处理", "虚拟现实", "增强现实"],
+      "venue_hints": ["SIGGRAPH", "SIGGRAPH Asia", "Eurographics", "ACM MM", "ICASSP", "ISMAR"],
+      "evidence_profile": "algorithm_benchmark"
+    },
+    {
+      "id": "robotics_control",
+      "name_en": "Robotics and Autonomous Systems",
+      "name_zh": "机器人与自主系统",
+      "arxiv_categories": ["cs.RO", "cs.SY"],
+      "keywords": ["robotics", "autonomous system", "motion planning", "robot learning", "sim-to-real", "slam", "control system", "manipulation", "机器人", "自主系统", "运动规划", "机器人学习", "控制系统", "机械臂"],
+      "venue_hints": ["ICRA", "IROS", "RSS", "CoRL", "RA-L"],
+      "evidence_profile": "robotics_experiment"
+    },
+    {
+      "id": "hardware_architecture",
+      "name_en": "Hardware, Architecture, and Emerging Technologies",
+      "name_zh": "硬件、体系结构与新兴技术",
+      "arxiv_categories": ["cs.AR", "cs.ET"],
+      "keywords": ["computer architecture", "processor", "accelerator", "memory hierarchy", "fpga", "asic", "quantum computing", "neuromorphic", "energy efficiency", "计算机体系结构", "处理器", "加速器", "存储层次", "量子计算", "能效"],
+      "venue_hints": ["ISCA", "MICRO", "ASPLOS", "HPCA", "DAC", "FPGA"],
+      "evidence_profile": "hardware_experiment"
+    },
+    {
+      "id": "scientific_computing",
+      "name_en": "Scientific Computing and Computational Applications",
+      "name_zh": "科学计算与计算应用",
+      "arxiv_categories": ["cs.CE", "cs.MS", "cs.NA", "cs.SC"],
+      "keywords": ["scientific computing", "numerical method", "simulation", "computational science", "symbolic computation", "mathematical software", "finite element", "科学计算", "数值方法", "仿真", "计算科学", "符号计算"],
+      "venue_hints": ["SC", "PPoPP", "ICS", "SIAM CSE"],
+      "evidence_profile": "numerical_experiment"
+    },
+    {
+      "id": "general_cs",
+      "name_en": "General and Interdisciplinary Computer Science",
+      "name_zh": "综合与交叉计算机科学",
+      "arxiv_categories": ["cs.GL", "cs.OH"],
+      "keywords": ["computer science", "computing survey", "interdisciplinary computing", "计算机科学", "计算综述", "交叉计算"],
+      "venue_hints": ["Communications of the ACM", "ACM Computing Surveys"],
+      "evidence_profile": "mixed"
+    }
+  ]
+}
+
