@@ -86,9 +86,7 @@ class ResearchWorkbench:
             enriched=int(imported["enriched"]),
             skipped=parsed.skipped,
             duplicates_in_file=parsed.duplicates_in_file,
-            evidence_ids=[
-                str(value) for value in imported.get("evidence_ids", [])
-            ],
+            evidence_ids=[str(value) for value in imported.get("evidence_ids", [])],
             warnings=parsed.warnings,
         )
 
@@ -214,14 +212,20 @@ class ResearchWorkbench:
             )
         run_dir = Path(run["run_dir"])
         state = load_state(run_dir)
-        rows = self.database.list_project_papers(run["project_id"])
-        pending = [
-            row for row in rows if row["screening_status"] == ScreeningStatus.PENDING
-        ]
-        if pending:
+        gate = self.database.screening_gate(run["project_id"])
+        if gate.get("blind"):
             raise WorkbenchError(
-                f"{len(pending)} papers still need a screening decision"
+                "Blind screening must be opened before research can continue"
             )
+        if gate["pending"]:
+            raise WorkbenchError(
+                f"{gate['pending']} papers still need a screening decision"
+            )
+        if gate["unresolved"]:
+            raise WorkbenchError(
+                f"{gate['unresolved']} papers still need conflict resolution"
+            )
+        rows = self.database.list_project_papers(run["project_id"])
         included_ids = {
             row["evidence_id"]
             for row in rows
@@ -317,6 +321,75 @@ class ResearchWorkbench:
                 reason=reason,
                 reviewer=reviewer,
             )
+        )
+
+    def record_screening_batch(
+        self,
+        *,
+        project_id: str,
+        decisions: list[dict],
+    ) -> None:
+        records: list[ScreeningDecision] = []
+        for decision in decisions:
+            status = str(decision["status"])
+            if status not in {
+                ScreeningStatus.INCLUDED,
+                ScreeningStatus.EXCLUDED,
+                ScreeningStatus.MAYBE,
+            }:
+                raise ValueError("status must be included, excluded, or maybe")
+            records.append(
+                ScreeningDecision(
+                    project_id=project_id,
+                    paper_id=int(decision["paper_id"]),
+                    status=status,
+                    reason=str(decision.get("reason", "")),
+                    reviewer=str(decision.get("reviewer", "human")),
+                )
+            )
+        self.database.record_screening_batch(records)
+
+    def configure_screening(
+        self,
+        project_id: str,
+        *,
+        mode: str,
+        reviewers: list[str] | None = None,
+        blind: bool = False,
+    ) -> dict:
+        return self.database.configure_screening(
+            project_id,
+            mode=mode,
+            reviewers=reviewers,
+            blind=blind,
+        )
+
+    def screening_workspace(
+        self,
+        project_id: str,
+        *,
+        reviewer: str = "",
+    ) -> dict:
+        return self.database.screening_workspace(
+            project_id,
+            reviewer_id=reviewer,
+        )
+
+    def resolve_screening(
+        self,
+        project_id: str,
+        paper_id: int,
+        *,
+        status: str,
+        reason: str,
+        resolved_by: str,
+    ) -> dict:
+        return self.database.resolve_screening(
+            project_id,
+            paper_id,
+            status=status,
+            reason=reason,
+            resolved_by=resolved_by,
         )
 
     def _import_state(

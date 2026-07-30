@@ -22,6 +22,7 @@ def export_project(
     runs = database.list_runs(project_id)
     reports = database.list_reports(project_id)
     documents = database.list_documents(project_id)
+    screening_audit = database.screening_audit(project_id)
     manifest: list[dict[str, str | int]] = []
 
     def add_file(archive: ZipFile, source: Path, arcname: str) -> None:
@@ -54,6 +55,10 @@ def export_project(
                 ensure_ascii=False,
                 indent=2,
             ),
+        )
+        archive.writestr(
+            "screening_audit.json",
+            json.dumps(screening_audit, ensure_ascii=False, indent=2),
         )
         archive.writestr("runs.json", json.dumps(runs, ensure_ascii=False, indent=2))
         archive.writestr(

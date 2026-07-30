@@ -51,8 +51,8 @@ Infrastructure: SQLite / FTS5 / file store / retrievers / LLM
 
 1. `execute_run()` 运行到 `searched`。
 2. 论文写入 `project_papers`，状态为 `pending`。
-3. 人工记录 included/excluded/maybe。
-4. `continue_after_screening()` 检查不存在 pending，过滤状态并把检查点推进到 `screened`。
+3. 单人模式直接记录 included/excluded/maybe；双人模式分别保存 reviewer 决定并计算共识。
+4. `continue_after_screening()` 检查不存在 pending；双人模式还要求不存在 conflict 或 awaiting_resolution。
 5. Agent 继续 evidence、quality、graph、report、audit。
 
 ### Infrastructure
@@ -70,6 +70,10 @@ Infrastructure: SQLite / FTS5 / file store / retrievers / LLM
 erDiagram
     PROJECTS ||--o{ PROJECT_PAPERS : contains
     PAPERS ||--o{ PROJECT_PAPERS : reused_by
+    PROJECTS ||--o| SCREENING_CONFIGS : configures
+    PROJECTS ||--o{ SCREENING_DECISIONS : records
+    PAPERS ||--o{ SCREENING_DECISIONS : receives
+    PROJECTS ||--o{ SCREENING_RESOLUTIONS : arbitrates
     PROJECTS ||--o{ RUNS : has
     RUNS ||--o{ RUN_EVENTS : emits
     PROJECTS ||--o{ DOCUMENTS : owns

@@ -15,6 +15,7 @@ from .bibliography import (
 from .config import Settings
 from .connections import ConnectionError, ConnectionRegistry
 from .cs_taxonomy import CSTaxonomy
+from .database import DatabaseError
 from .domain import ReviewProtocol
 from .exporter import export_project
 from .jobs import JobManager
@@ -59,7 +60,7 @@ def create_app(settings: Settings | None = None):
 
     app = FastAPI(
         title="Paper Research Agent API",
-        version="0.6.2",
+        version="0.7.0",
         description=(
             "Local-first API for literature discovery, screening, evidence "
             "extraction, quality appraisal, full-text search, and report generation."
@@ -126,12 +127,22 @@ def create_app(settings: Settings | None = None):
 
     class ScreeningItem(BaseModel):
         paper_id: int
-        status: str
-        reason: str = ""
-        reviewer: str = "human"
+        status: str = Field(max_length=20)
+        reason: str = Field(default="", max_length=4000)
+        reviewer: str = Field(default="human", min_length=1, max_length=100)
 
     class ScreeningBatch(BaseModel):
-        decisions: list[ScreeningItem]
+        decisions: list[ScreeningItem] = Field(min_length=1, max_length=1000)
+
+    class ScreeningConfigUpdate(BaseModel):
+        mode: str = Field(default="single", max_length=20)
+        reviewers: list[str] = Field(default_factory=list, max_length=2)
+        blind: bool = False
+
+    class ScreeningResolutionRequest(BaseModel):
+        status: str = Field(max_length=20)
+        reason: str = Field(min_length=1, max_length=4000)
+        resolved_by: str = Field(min_length=1, max_length=100)
 
     class ClassificationRequest(BaseModel):
         text: str = Field(min_length=2, max_length=5000)
@@ -213,7 +224,7 @@ def create_app(settings: Settings | None = None):
         )
         return {
             "status": "ok",
-            "version": "0.6.2",
+            "version": "0.7.0",
             "database": str(active_settings.database_path),
             "specialization": "computer_science",
             "web_available": (configured_web / "index.html").is_file(),
@@ -556,14 +567,80 @@ def create_app(settings: Settings | None = None):
     ) -> dict[str, int]:
         project_or_404(project_id)
         try:
-            for decision in payload.decisions:
-                workbench.record_screening(
-                    project_id=project_id,
-                    **decision.model_dump(),
-                )
+            workbench.record_screening_batch(
+                project_id=project_id,
+                decisions=[decision.model_dump() for decision in payload.decisions],
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except (ValueError, WorkbenchError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"updated": len(payload.decisions)}
+
+    @app.get("/projects/{project_id}/screening/config")
+    def get_screening_config(project_id: str) -> dict[str, Any]:
+        project_or_404(project_id)
+        return workbench.database.get_screening_config(project_id)
+
+    @app.put("/projects/{project_id}/screening/config")
+    def update_screening_config(
+        project_id: str,
+        payload: ScreeningConfigUpdate,
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        try:
+            return workbench.configure_screening(
+                project_id,
+                mode=payload.mode,
+                reviewers=payload.reviewers,
+                blind=payload.blind,
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/projects/{project_id}/screening/workspace")
+    def get_screening_workspace(
+        project_id: str,
+        reviewer: str = Query(default="", max_length=100),
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        try:
+            workspace = workbench.screening_workspace(
+                project_id,
+                reviewer=reviewer,
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        workspace["papers"] = [
+            {
+                **{key: value for key, value in paper.items() if key != "paper"},
+                "paper": paper["paper"].to_dict(),
+            }
+            for paper in workspace["papers"]
+        ]
+        return workspace
+
+    @app.post("/projects/{project_id}/screening/{paper_id}/resolve")
+    def resolve_screening(
+        project_id: str,
+        paper_id: int,
+        payload: ScreeningResolutionRequest,
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        try:
+            return workbench.resolve_screening(
+                project_id,
+                paper_id,
+                status=payload.status,
+                reason=payload.reason,
+                resolved_by=payload.resolved_by,
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/runs/{run_id}/continue", status_code=202)
     def continue_run(
@@ -574,11 +651,11 @@ def create_app(settings: Settings | None = None):
     ) -> dict[str, Any]:
         run = run_or_404(run_id)
         project = project_or_404(run["project_id"])
-        stored_connection = str(
-            run["config"].get("connection", {}).get("id", "")
-        )
+        stored_connection = str(run["config"].get("connection", {}).get("id", ""))
         selected_connection = connection_id or (
-            None if stored_connection in {"", "demo", "env-openai"} else stored_connection
+            None
+            if stored_connection in {"", "demo", "env-openai"}
+            else stored_connection
         )
         selected_agent = agent_id or str(
             run["config"].get("agent", {}).get("id", "deep_review")
@@ -642,9 +719,7 @@ def create_app(settings: Settings | None = None):
         conversation = conversation_or_404(conversation_id)
         project = project_or_404(conversation["project_id"])
         selected_agent_id = payload.agent_id or conversation["agent_id"]
-        selected_connection_id = (
-            payload.connection_id or conversation["connection_id"]
-        )
+        selected_connection_id = payload.connection_id or conversation["connection_id"]
         is_demo = payload.demo or selected_connection_id == "demo"
         try:
             agent = get_agent_profile(selected_agent_id)

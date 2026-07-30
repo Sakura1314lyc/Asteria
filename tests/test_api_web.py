@@ -42,7 +42,7 @@ class ApiWebTests(unittest.TestCase):
             app = create_app(self.make_settings(root))
             with TestClient(app) as client:
                 health = client.get("/health").json()
-                self.assertEqual(health["version"], "0.6.2")
+                self.assertEqual(health["version"], "0.7.0")
                 self.assertTrue(health["web_available"])
                 self.assertEqual(client.get("/").status_code, 200)
                 self.assertIn("Asteria", client.get("/app").text)
@@ -156,9 +156,7 @@ class ApiWebTests(unittest.TestCase):
                 )
                 self.assertEqual(answer.status_code, 201)
                 self.assertTrue(answer.json()["assistant_message"]["sources"])
-                saved_chat = client.get(
-                    f"/conversations/{conversation_id}"
-                ).json()
+                saved_chat = client.get(f"/conversations/{conversation_id}").json()
                 self.assertEqual(len(saved_chat["messages"]), 2)
                 self.assertNotIn("sources_json", saved_chat["messages"][1])
 
@@ -167,6 +165,7 @@ class ApiWebTests(unittest.TestCase):
                 archive_path = root / "export.zip"
                 archive_path.write_bytes(archive_response.content)
                 with ZipFile(archive_path) as archive:
+                    self.assertIn("screening_audit.json", archive.namelist())
                     self.assertTrue(
                         any(
                             name.endswith("cs_evidence_matrix.csv")
@@ -257,7 +256,13 @@ ER  -
 """
                 imported = client.post(
                     f"/projects/{project_id}/bibliography",
-                    files={"file": ("zotero-export.ris", ris, "application/x-research-info-systems")},
+                    files={
+                        "file": (
+                            "zotero-export.ris",
+                            ris,
+                            "application/x-research-info-systems",
+                        )
+                    },
                 )
                 self.assertEqual(imported.status_code, 201)
                 self.assertEqual(imported.json()["filename"], "zotero-export.ris")
@@ -270,7 +275,13 @@ ER  -
 
                 repeated = client.post(
                     f"/projects/{project_id}/bibliography",
-                    files={"file": ("zotero-export.ris", ris, "application/x-research-info-systems")},
+                    files={
+                        "file": (
+                            "zotero-export.ris",
+                            ris,
+                            "application/x-research-info-systems",
+                        )
+                    },
                 )
                 self.assertEqual(repeated.json()["added"], 0)
                 self.assertEqual(repeated.json()["already_present"], 2)
@@ -297,6 +308,127 @@ ER  -
                     },
                 )
                 self.assertEqual(oversized.status_code, 413)
+
+    def test_dual_screening_api_keeps_blind_decisions_private(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = create_app(self.make_settings(root))
+            with TestClient(app) as client:
+                project_id = client.post(
+                    "/projects",
+                    json={
+                        "name": "Independent screening",
+                        "topic": "software engineering evidence",
+                    },
+                ).json()["id"]
+                bibliography = b"""TY  - CONF
+TI  - Reproducible Software Experiments
+AU  - Doe, Jane
+PY  - 2025
+ER  -
+"""
+                imported = client.post(
+                    f"/projects/{project_id}/bibliography",
+                    files={
+                        "file": (
+                            "screening.ris",
+                            bibliography,
+                            "application/x-research-info-systems",
+                        )
+                    },
+                )
+                self.assertEqual(imported.status_code, 201)
+                paper_id = client.get(f"/projects/{project_id}/papers").json()[0]["id"]
+                config_url = f"/projects/{project_id}/screening/config"
+                screening_url = f"/projects/{project_id}/screening"
+
+                configured = client.put(
+                    config_url,
+                    json={
+                        "mode": "dual",
+                        "reviewers": ["alice", "bob"],
+                        "blind": True,
+                    },
+                )
+                self.assertEqual(configured.status_code, 200)
+                decided = client.post(
+                    screening_url,
+                    json={
+                        "decisions": [
+                            {
+                                "paper_id": paper_id,
+                                "status": "included",
+                                "reason": "Alice private rationale",
+                                "reviewer": "alice",
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(decided.status_code, 200)
+
+                bob_workspace = client.get(
+                    f"/projects/{project_id}/screening/workspace",
+                    params={"reviewer": "bob"},
+                )
+                self.assertEqual(bob_workspace.status_code, 200)
+                self.assertNotIn("Alice private rationale", bob_workspace.text)
+                self.assertEqual(
+                    bob_workspace.json()["papers"][0]["consensus_state"],
+                    "blinded",
+                )
+                early_open = client.put(
+                    config_url,
+                    json={
+                        "mode": "dual",
+                        "reviewers": ["alice", "bob"],
+                        "blind": False,
+                    },
+                )
+                self.assertEqual(early_open.status_code, 409)
+
+                bob_decision = client.post(
+                    screening_url,
+                    json={
+                        "decisions": [
+                            {
+                                "paper_id": paper_id,
+                                "status": "excluded",
+                                "reason": "Bob private rationale",
+                                "reviewer": "bob",
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(bob_decision.status_code, 200)
+                generic_papers = client.get(f"/projects/{project_id}/papers")
+                self.assertNotIn("Alice private rationale", generic_papers.text)
+                self.assertNotIn("Bob private rationale", generic_papers.text)
+                self.assertEqual(
+                    generic_papers.json()[0]["screening_status"],
+                    "pending",
+                )
+                opened = client.put(
+                    config_url,
+                    json={
+                        "mode": "dual",
+                        "reviewers": ["alice", "bob"],
+                        "blind": False,
+                    },
+                )
+                self.assertEqual(opened.status_code, 200)
+                workspace = client.get(
+                    f"/projects/{project_id}/screening/workspace"
+                ).json()
+                self.assertEqual(workspace["summary"]["conflict"], 1)
+                resolution = client.post(
+                    f"/projects/{project_id}/screening/{paper_id}/resolve",
+                    json={
+                        "status": "included",
+                        "reason": "Resolved after discussion",
+                        "resolved_by": "carol",
+                    },
+                )
+                self.assertEqual(resolution.status_code, 200)
 
 
 if __name__ == "__main__":

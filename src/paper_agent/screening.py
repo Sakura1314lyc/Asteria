@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 
 from .domain import ReviewProtocol, ScreeningStatus
@@ -16,6 +17,64 @@ class ScreeningSuggestion:
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class ScreeningConsensus:
+    state: str
+    status: str
+    complete: bool
+    conflict: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
+
+
+def evaluate_consensus(
+    decisions: Mapping[str, str],
+    reviewers: list[str],
+) -> ScreeningConsensus:
+    """Resolve independent current decisions without discarding disagreement."""
+
+    statuses = [decisions.get(reviewer, "") for reviewer in reviewers]
+    if not reviewers or any(not status for status in statuses):
+        return ScreeningConsensus(
+            state="pending",
+            status=ScreeningStatus.PENDING,
+            complete=False,
+            conflict=False,
+        )
+    unique = set(statuses)
+    if {
+        ScreeningStatus.INCLUDED,
+        ScreeningStatus.EXCLUDED,
+    }.issubset(unique):
+        return ScreeningConsensus(
+            state="conflict",
+            status=ScreeningStatus.MAYBE,
+            complete=True,
+            conflict=True,
+        )
+    if ScreeningStatus.MAYBE in unique:
+        return ScreeningConsensus(
+            state="awaiting_resolution",
+            status=ScreeningStatus.MAYBE,
+            complete=True,
+            conflict=False,
+        )
+    if len(unique) == 1:
+        return ScreeningConsensus(
+            state="agreed",
+            status=statuses[0],
+            complete=True,
+            conflict=False,
+        )
+    return ScreeningConsensus(
+        state="awaiting_resolution",
+        status=ScreeningStatus.MAYBE,
+        complete=True,
+        conflict=False,
+    )
 
 
 class ScreeningEngine:

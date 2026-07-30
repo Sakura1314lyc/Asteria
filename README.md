@@ -64,6 +64,7 @@ initialized → planned → searched → screened
 
 - SQLite/WAL 项目库，可管理多个课题和多次运行。
 - 论文、证据卡、筛选决定、质量评价、文档和报告版本化保存。
+- 支持独立双人盲审、完成后揭盲、冲突仲裁和追加式决定历史。
 - PDF、Markdown、纯文本入库；页码级抽取和 SQLite FTS5 全文检索。
 - 研究方案支持 PICO 字段、年份、关键词、语言与研究类型限制。
 - 透明规则只提供筛选“建议”，正式纳排必须由人确认。
@@ -175,6 +176,8 @@ paper-agent research start <project_id> `
 
 ### 3. 人工纳排
 
+探索性项目可继续使用单人模式：
+
 ```powershell
 paper-agent screen list <project_id> --status pending
 paper-agent screen decide <project_id> <数据库论文ID> included `
@@ -182,6 +185,30 @@ paper-agent screen decide <project_id> <数据库论文ID> included `
 paper-agent screen decide <project_id> <数据库论文ID> excluded `
   --reason "仅为编辑评论，无实证方法"
 ```
+
+系统综述建议开启双人盲审：
+
+```powershell
+paper-agent screen configure <project_id> `
+  --reviewer reviewer-a `
+  --reviewer reviewer-b
+
+paper-agent screen status <project_id> --reviewer reviewer-a
+paper-agent screen decide <project_id> <数据库论文ID> included `
+  --reviewer reviewer-a `
+  --reason "符合预注册纳入标准"
+
+# 双方完成全部论文后揭盲
+paper-agent screen configure <project_id> --open
+
+# 对 included / excluded 冲突进行仲裁
+paper-agent screen resolve <project_id> <数据库论文ID> included `
+  --reviewer adjudicator `
+  --reason "讨论后确认研究包含目标系统评价"
+```
+
+盲审由服务端裁剪响应，对方决定不会提前发送到浏览器。这里的 reviewer 是本地
+工作流身份与审计标签，不是登录账户；共享部署仍需额外认证与项目权限。
 
 ### 4. 继续证据综合
 
@@ -216,7 +243,8 @@ paper-agent evaluate .paper-agent\<project_id>\runs\<运行目录>
 paper-agent project export <project_id> exports\my-review.zip
 ```
 
-导出包包含项目元数据、论文库、报告、运行产物、全文和 SHA-256 清单，不包含 API 密钥。
+导出包包含项目元数据、论文库、完整筛选/改判/仲裁审计、报告、运行产物、
+全文和 SHA-256 清单，不包含 API 密钥。
 
 ## 本地 REST API
 

@@ -7,8 +7,8 @@
 1. 在运行前冻结研究问题和研究方案。
 2. 配置数据库、年份、关键词、语言和研究类型。
 3. 保存所有检索式及检索时间。
-4. 对去重后的论文进行标题/摘要人工筛选。
-5. 每个排除决定保存理由和 reviewer。
+4. 由至少两名研究者独立完成最终纳入决定；建议标题/摘要阶段也采用双人筛选。
+5. 每个决定保存理由和 reviewer，预先规定讨论与第三方仲裁规则。
 6. 对纳入论文导入全文。
 7. 由两名研究者复核关键证据卡。
 8. 根据研究设计选择正式风险偏倚工具。
@@ -27,9 +27,30 @@
 | 写作 | 带稳定 ID 的草稿 | 语义核引、学术判断 |
 | 流程图 | 运行计数 | PRISMA 合规表述 |
 
+## 独立双人筛选
+
+Web 或 `paper-agent screen configure` 可以为项目启用两个 reviewer 的盲审。
+双方完成前，API 不向一方返回另一方的决定。揭盲后：
+
+- 两人同为 included 或 excluded：自动形成一致结论。
+- 一人为 included、一人为 excluded：标记为 conflict。
+- 任一人为 maybe：标记为 awaiting_resolution。
+- 冲突和待讨论项需要填写仲裁人、最终 included/excluded 与讨论理由。
+- reviewer 改判会让已有仲裁失效并重新计算，但旧决定和旧仲裁保留在审计历史中。
+
+方法学依据：
+
+- [Cochrane Handbook Chapter 4](https://training.cochrane.org/handbook/current/chapter-04)
+  建议至少两人独立作出最终纳入决定，并预先规定分歧解决方式。
+- [Cochrane Handbook Chapter 5](https://training.cochrane.org/handbook/current/chapter-05)
+  建议保留原始提取结果、共识数据及分歧解决记录。
+- [Cochrane Handbook Chapter 7](https://training.cochrane.org/handbook/current/chapter-07)
+  强调独立评价、透明理由、标准化试评与分歧讨论。
+
 ## `maybe` 的处理
 
-`maybe` 在继续综合时暂时视为纳入，目的是避免自动化导致不可逆漏检。正式报告前应把所有 `maybe` 解决为 included 或 excluded。
+单人模式为兼容探索性工作流，`maybe` 在继续综合时暂时视为纳入。双人模式中
+`maybe` 是待讨论状态，必须仲裁为 included 或 excluded 后才能继续。
 
 ## 研究矩阵
 

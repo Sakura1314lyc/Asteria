@@ -112,6 +112,54 @@ export interface ProjectPaper {
   paper: Paper;
 }
 
+export interface ScreeningDecisionRecord {
+  reviewer_id: string;
+  status: ScreeningStatus;
+  reason: string;
+  decided_at: string;
+}
+
+export interface ScreeningResolution {
+  status: "included" | "excluded";
+  reason: string;
+  resolved_by: string;
+  resolved_at: string;
+}
+
+export interface ScreeningConfig {
+  mode: "single" | "dual";
+  blind: boolean;
+  reviewers: string[];
+  updated_at: string;
+}
+
+export interface ScreeningPaper extends ProjectPaper {
+  consensus_state:
+    | "pending"
+    | "agreed"
+    | "conflict"
+    | "awaiting_resolution"
+    | "resolved"
+    | "blinded";
+  my_decision: ScreeningDecisionRecord | null;
+  decisions: ScreeningDecisionRecord[];
+  resolution: ScreeningResolution | null;
+}
+
+export interface ScreeningWorkspace {
+  config: ScreeningConfig;
+  summary: {
+    total: number;
+    reviewer_completed: number;
+    pending?: number;
+    agreed?: number;
+    conflict?: number;
+    awaiting_resolution?: number;
+    resolved?: number;
+  };
+  papers: ScreeningPaper[];
+}
+
 export interface BibliographyImportResult {
   filename: string;
   format: "ris" | "bibtex" | "csl-json";

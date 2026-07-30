@@ -17,6 +17,8 @@ import type {
   Run,
   RunEvent,
   SearchHit,
+  ScreeningConfig,
+  ScreeningWorkspace,
   Taxonomy,
   TaxonomyMatch
 } from "./types";
@@ -215,6 +217,51 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ decisions })
+      }
+    ),
+
+  getScreeningConfig: (projectId: string) =>
+    request<ScreeningConfig>(
+      `/projects/${encodeURIComponent(projectId)}/screening/config`
+    ),
+
+  updateScreeningConfig: (
+    projectId: string,
+    payload: {
+      mode: "single" | "dual";
+      reviewers: string[];
+      blind: boolean;
+    }
+  ) =>
+    request<ScreeningConfig>(
+      `/projects/${encodeURIComponent(projectId)}/screening/config`,
+      {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      }
+    ),
+
+  getScreeningWorkspace: (projectId: string, reviewer?: string) =>
+    request<ScreeningWorkspace>(
+      `/projects/${encodeURIComponent(projectId)}/screening/workspace${queryString({
+        reviewer
+      })}`
+    ),
+
+  resolveScreening: (
+    projectId: string,
+    paperId: number,
+    payload: {
+      status: "included" | "excluded";
+      reason: string;
+      resolved_by: string;
+    }
+  ) =>
+    request<import("./types").ScreeningResolution>(
+      `/projects/${encodeURIComponent(projectId)}/screening/${paperId}/resolve`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
       }
     ),
 

@@ -19,6 +19,131 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CliTests(unittest.TestCase):
+    def test_dual_screening_can_be_completed_from_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            environment = {
+                "PAPER_AGENT_DATA_ROOT": str(root / "data"),
+                "PAPER_AGENT_DATABASE": str(root / "workbench.db"),
+                "PAPER_AGENT_OUTPUT_ROOT": str(root / "runs"),
+            }
+            bibliography = root / "screening.ris"
+            bibliography.write_text(
+                """TY  - CONF
+TI  - Independent Review Systems
+AU  - Patel, Mira
+PY  - 2025
+ER  -
+""",
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, environment):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "project",
+                                "create",
+                                "Dual CLI",
+                                "--topic",
+                                "software engineering",
+                            ]
+                        ),
+                        0,
+                    )
+                project_id = json.loads(output.getvalue())["id"]
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "bibliography",
+                                "import",
+                                project_id,
+                                str(bibliography),
+                            ]
+                        ),
+                        0,
+                    )
+                    self.assertEqual(
+                        main(
+                            [
+                                "screen",
+                                "configure",
+                                project_id,
+                                "--reviewer",
+                                "alice",
+                                "--reviewer",
+                                "bob",
+                            ]
+                        ),
+                        0,
+                    )
+
+                status_output = io.StringIO()
+                with redirect_stdout(status_output):
+                    self.assertEqual(
+                        main(
+                            [
+                                "screen",
+                                "status",
+                                project_id,
+                                "--reviewer",
+                                "alice",
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                paper_id = json.loads(status_output.getvalue())["papers"][0]["id"]
+                for reviewer, status in (
+                    ("alice", "included"),
+                    ("bob", "excluded"),
+                ):
+                    with redirect_stdout(io.StringIO()):
+                        self.assertEqual(
+                            main(
+                                [
+                                    "screen",
+                                    "decide",
+                                    project_id,
+                                    str(paper_id),
+                                    status,
+                                    "--reviewer",
+                                    reviewer,
+                                ]
+                            ),
+                            0,
+                        )
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "screen",
+                                "configure",
+                                project_id,
+                                "--open",
+                            ]
+                        ),
+                        0,
+                    )
+                    self.assertEqual(
+                        main(
+                            [
+                                "screen",
+                                "resolve",
+                                project_id,
+                                str(paper_id),
+                                "included",
+                                "--reason",
+                                "Resolved by discussion",
+                                "--reviewer",
+                                "carol",
+                            ]
+                        ),
+                        0,
+                    )
+
     def test_bibliography_import_has_human_and_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

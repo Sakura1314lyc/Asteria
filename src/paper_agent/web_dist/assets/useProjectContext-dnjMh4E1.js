@@ -1,0 +1,1 @@
+import{y as e}from"./index-BJ_6QCD1.js";function t(){return e()}export{t};

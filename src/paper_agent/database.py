@@ -21,8 +21,9 @@ from .domain import (
     utc_now,
 )
 from .models import EvidenceCard, Paper
+from .screening import evaluate_consensus
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class DatabaseError(RuntimeError):
@@ -105,6 +106,70 @@ class Database:
                     PRIMARY KEY (project_id, paper_id),
                     UNIQUE (project_id, evidence_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS screening_configs (
+                    project_id TEXT PRIMARY KEY REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    mode TEXT NOT NULL DEFAULT 'single',
+                    blind INTEGER NOT NULL DEFAULT 0,
+                    reviewers_json TEXT NOT NULL DEFAULT '[]',
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS screening_decisions (
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    reviewer_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    decided_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, paper_id, reviewer_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS screening_decision_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    reviewer_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    decided_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS screening_resolutions (
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    resolved_by TEXT NOT NULL,
+                    resolved_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, paper_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS screening_resolution_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    resolved_by TEXT NOT NULL,
+                    resolved_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_screening_decisions_project
+                    ON screening_decisions(project_id, reviewer_id, paper_id);
+                CREATE INDEX IF NOT EXISTS idx_screening_decision_events_project
+                    ON screening_decision_events(project_id, paper_id, id);
+                CREATE INDEX IF NOT EXISTS idx_screening_resolution_events_project
+                    ON screening_resolution_events(project_id, paper_id, id);
 
                 CREATE TABLE IF NOT EXISTS evidence_cards (
                     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -453,14 +518,17 @@ class Database:
                     (project_id,),
                 ).fetchall()
             }
-            next_number = max(
-                (
-                    int(value[1:])
-                    for value in used_ids
-                    if re.fullmatch(r"P\d{3,}", value)
-                ),
-                default=0,
-            ) + 1
+            next_number = (
+                max(
+                    (
+                        int(value[1:])
+                        for value in used_ids
+                        if re.fullmatch(r"P\d{3,}", value)
+                    ),
+                    default=0,
+                )
+                + 1
+            )
             for paper in papers:
                 canonical = canonical_key(paper)
                 existing = db.execute(
@@ -614,7 +682,390 @@ class Database:
 
     def record_screening(self, decision: ScreeningDecision) -> None:
         with self.connection() as db:
-            result = db.execute(
+            db.execute("BEGIN IMMEDIATE")
+            _record_screening_transaction(db, decision)
+
+    def record_screening_batch(
+        self,
+        decisions: list[ScreeningDecision],
+    ) -> None:
+        if not decisions:
+            raise ValueError("At least one screening decision is required")
+        project_ids = {decision.project_id for decision in decisions}
+        if len(project_ids) != 1:
+            raise ValueError("A screening batch must belong to one project")
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for decision in decisions:
+                _record_screening_transaction(db, decision)
+
+    def get_screening_config(self, project_id: str) -> dict[str, Any]:
+        with self.connection() as db:
+            if not _project_exists(db, project_id):
+                raise DatabaseError("Project not found")
+            return _screening_config(db, project_id)
+
+    def configure_screening(
+        self,
+        project_id: str,
+        *,
+        mode: str,
+        reviewers: list[str] | None = None,
+        blind: bool = False,
+    ) -> dict[str, Any]:
+        normalized_mode = mode.strip().lower()
+        normalized_reviewers = list(
+            dict.fromkeys(
+                reviewer.strip() for reviewer in (reviewers or []) if reviewer.strip()
+            )
+        )
+        if normalized_mode not in {"single", "dual"}:
+            raise ValueError("Screening mode must be 'single' or 'dual'")
+        if normalized_mode == "dual" and len(normalized_reviewers) != 2:
+            raise ValueError("Dual screening requires exactly two unique reviewers")
+        if normalized_mode == "single":
+            normalized_reviewers = []
+            blind = False
+
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not _project_exists(db, project_id):
+                raise DatabaseError("Project not found")
+            current = _screening_config(db, project_id)
+            has_config = db.execute(
+                "SELECT 1 FROM screening_configs WHERE project_id = ?",
+                (project_id,),
+            ).fetchone()
+            decision_count = int(
+                db.execute(
+                    """
+                    SELECT COUNT(*) AS amount FROM screening_decisions
+                    WHERE project_id = ?
+                    """,
+                    (project_id,),
+                ).fetchone()["amount"]
+            )
+
+            if (
+                current["mode"] == "dual"
+                and normalized_mode == "single"
+                and decision_count
+            ):
+                raise DatabaseError(
+                    "Dual screening cannot be disabled after decisions exist"
+                )
+            if (
+                current["mode"] == "dual"
+                and normalized_mode == "dual"
+                and current["reviewers"] != normalized_reviewers
+                and decision_count
+            ):
+                raise DatabaseError(
+                    "Reviewers cannot be changed after dual screening has started"
+                )
+            if (
+                current["mode"] == "dual"
+                and current["blind"]
+                and normalized_mode == "dual"
+                and not blind
+                and not _all_dual_decisions_complete(
+                    db,
+                    project_id,
+                    current["reviewers"],
+                )
+            ):
+                raise DatabaseError(
+                    "Blind review can only be opened after both reviewers finish"
+                )
+            if (
+                current["mode"] == "dual"
+                and not current["blind"]
+                and normalized_mode == "dual"
+                and blind
+                and decision_count
+            ):
+                raise DatabaseError(
+                    "Blind review cannot be restored after decisions were opened"
+                )
+
+            enabling_dual = current["mode"] == "single" and normalized_mode == "dual"
+            if enabling_dual:
+                db.execute(
+                    "DELETE FROM screening_decisions WHERE project_id = ?",
+                    (project_id,),
+                )
+                legacy = db.execute(
+                    """
+                    SELECT paper_id, screening_status, screening_reason, decided_at
+                    FROM project_papers
+                    WHERE project_id = ? AND screening_status != ?
+                    """,
+                    (project_id, ScreeningStatus.PENDING),
+                ).fetchall()
+                for row in legacy:
+                    migrated = ScreeningDecision(
+                        project_id=project_id,
+                        paper_id=row["paper_id"],
+                        status=row["screening_status"],
+                        reason=row["screening_reason"],
+                        reviewer=normalized_reviewers[0],
+                        decided_at=row["decided_at"] or utc_now(),
+                    )
+                    _save_screening_decision(db, migrated)
+                db.execute(
+                    """
+                    UPDATE project_papers
+                    SET screening_status = ?, screening_reason = '',
+                        reviewer = '', decided_at = ''
+                    WHERE project_id = ?
+                    """,
+                    (ScreeningStatus.PENDING, project_id),
+                )
+
+            now = utc_now()
+            db.execute(
+                """
+                INSERT INTO screening_configs(
+                    project_id, mode, blind, reviewers_json, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                    mode = excluded.mode,
+                    blind = excluded.blind,
+                    reviewers_json = excluded.reviewers_json,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    project_id,
+                    normalized_mode,
+                    int(blind),
+                    _json(normalized_reviewers),
+                    now,
+                ),
+            )
+            if (
+                current["mode"] == "dual"
+                and current["blind"]
+                and normalized_mode == "dual"
+                and not blind
+            ):
+                paper_rows = db.execute(
+                    """
+                    SELECT paper_id FROM project_papers
+                    WHERE project_id = ?
+                    """,
+                    (project_id,),
+                ).fetchall()
+                for paper_row in paper_rows:
+                    _recompute_screening(
+                        db,
+                        project_id,
+                        paper_row["paper_id"],
+                        normalized_reviewers,
+                    )
+            if has_config is None or enabling_dual:
+                db.execute(
+                    "UPDATE projects SET updated_at = ? WHERE id = ?",
+                    (now, project_id),
+                )
+            return _screening_config(db, project_id)
+
+    def screening_workspace(
+        self,
+        project_id: str,
+        *,
+        reviewer_id: str = "",
+    ) -> dict[str, Any]:
+        with self.connection() as db:
+            if not _project_exists(db, project_id):
+                raise DatabaseError("Project not found")
+            config = _screening_config(db, project_id)
+            if (
+                config["mode"] == "dual"
+                and reviewer_id
+                and reviewer_id not in config["reviewers"]
+            ):
+                raise DatabaseError(
+                    f"Reviewer must be one of: {', '.join(config['reviewers'])}"
+                )
+            rows = db.execute(
+                """
+                SELECT p.*, pp.evidence_id, pp.screening_status,
+                       pp.screening_reason, pp.reviewer, pp.tags_json,
+                       pp.decided_at
+                FROM project_papers pp
+                JOIN papers p ON p.id = pp.paper_id
+                WHERE pp.project_id = ?
+                ORDER BY pp.evidence_id
+                """,
+                (project_id,),
+            ).fetchall()
+            papers = [_paper_row(row) for row in rows]
+            decisions = db.execute(
+                """
+                SELECT paper_id, reviewer_id, status, reason, decided_at
+                FROM screening_decisions
+                WHERE project_id = ?
+                ORDER BY paper_id, reviewer_id
+                """,
+                (project_id,),
+            ).fetchall()
+            resolutions = db.execute(
+                """
+                SELECT paper_id, status, reason, resolved_by, resolved_at
+                FROM screening_resolutions
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchall()
+
+        decision_map: dict[int, dict[str, dict[str, str]]] = {}
+        for row in decisions:
+            decision_map.setdefault(row["paper_id"], {})[row["reviewer_id"]] = {
+                "reviewer_id": row["reviewer_id"],
+                "status": row["status"],
+                "reason": row["reason"],
+                "decided_at": row["decided_at"],
+            }
+        resolution_map = {
+            row["paper_id"]: {
+                "status": row["status"],
+                "reason": row["reason"],
+                "resolved_by": row["resolved_by"],
+                "resolved_at": row["resolved_at"],
+            }
+            for row in resolutions
+        }
+
+        state_counts = {
+            "pending": 0,
+            "agreed": 0,
+            "conflict": 0,
+            "awaiting_resolution": 0,
+            "resolved": 0,
+        }
+        for paper in papers:
+            paper_decisions = decision_map.get(paper["id"], {})
+            resolution = resolution_map.get(paper["id"])
+            if config["mode"] == "dual":
+                consensus = evaluate_consensus(
+                    {
+                        reviewer: item["status"]
+                        for reviewer, item in paper_decisions.items()
+                    },
+                    config["reviewers"],
+                )
+                state = "resolved" if resolution else consensus.state
+                state_counts[state] += 1
+                if config["blind"]:
+                    own = paper_decisions.get(reviewer_id) if reviewer_id else None
+                    paper["screening_status"] = (
+                        own["status"] if own else ScreeningStatus.PENDING
+                    )
+                    paper["screening_reason"] = own["reason"] if own else ""
+                    paper["reviewer"] = reviewer_id
+                    paper["decided_at"] = own["decided_at"] if own else ""
+                    paper["my_decision"] = own
+                    paper["decisions"] = []
+                    paper["resolution"] = None
+                    paper["consensus_state"] = "blinded"
+                else:
+                    paper["my_decision"] = paper_decisions.get(reviewer_id)
+                    paper["decisions"] = list(paper_decisions.values())
+                    paper["resolution"] = resolution
+                    paper["consensus_state"] = state
+            else:
+                state = (
+                    "pending"
+                    if paper["screening_status"] == ScreeningStatus.PENDING
+                    else "agreed"
+                )
+                state_counts[state] += 1
+                paper["my_decision"] = None
+                paper["decisions"] = []
+                paper["resolution"] = None
+                paper["consensus_state"] = state
+
+        summary = {
+            "total": len(papers),
+            **state_counts,
+            "reviewer_completed": sum(
+                1
+                for decisions_for_paper in decision_map.values()
+                if reviewer_id in decisions_for_paper
+            ),
+        }
+        if config["blind"]:
+            summary = {
+                "total": len(papers),
+                "reviewer_completed": summary["reviewer_completed"],
+            }
+        return {"config": config, "summary": summary, "papers": papers}
+
+    def resolve_screening(
+        self,
+        project_id: str,
+        paper_id: int,
+        *,
+        status: str,
+        reason: str,
+        resolved_by: str,
+    ) -> dict[str, Any]:
+        if status not in {ScreeningStatus.INCLUDED, ScreeningStatus.EXCLUDED}:
+            raise ValueError("Resolution status must be included or excluded")
+        if not resolved_by.strip():
+            raise ValueError("Resolver is required")
+        if not reason.strip():
+            raise ValueError("Resolution reason is required")
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not _paper_is_attached(db, project_id, paper_id):
+                raise DatabaseError("Paper is not attached to this project")
+            config = _screening_config(db, project_id)
+            if config["mode"] != "dual":
+                raise DatabaseError("Resolution is only available in dual mode")
+            if config["blind"]:
+                raise DatabaseError("Open blind review before resolving decisions")
+            rows = db.execute(
+                """
+                SELECT reviewer_id FROM screening_decisions
+                WHERE project_id = ? AND paper_id = ?
+                """,
+                (project_id, paper_id),
+            ).fetchall()
+            completed = {row["reviewer_id"] for row in rows}
+            if not set(config["reviewers"]).issubset(completed):
+                raise DatabaseError("Both reviewers must decide before resolution")
+            now = utc_now()
+            values = (
+                project_id,
+                paper_id,
+                status,
+                reason.strip(),
+                resolved_by.strip(),
+                now,
+            )
+            db.execute(
+                """
+                INSERT INTO screening_resolutions(
+                    project_id, paper_id, status, reason, resolved_by, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, paper_id) DO UPDATE SET
+                    status = excluded.status,
+                    reason = excluded.reason,
+                    resolved_by = excluded.resolved_by,
+                    resolved_at = excluded.resolved_at
+                """,
+                values,
+            )
+            db.execute(
+                """
+                INSERT INTO screening_resolution_events(
+                    project_id, paper_id, status, reason, resolved_by, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
+            db.execute(
                 """
                 UPDATE project_papers
                 SET screening_status = ?, screening_reason = ?, reviewer = ?,
@@ -622,16 +1073,111 @@ class Database:
                 WHERE project_id = ? AND paper_id = ?
                 """,
                 (
-                    decision.status,
-                    decision.reason,
-                    decision.reviewer,
-                    decision.decided_at,
-                    decision.project_id,
-                    decision.paper_id,
+                    status,
+                    reason.strip(),
+                    resolved_by.strip(),
+                    now,
+                    project_id,
+                    paper_id,
                 ),
             )
-            if result.rowcount != 1:
-                raise DatabaseError("Paper is not attached to this project")
+            return {
+                "paper_id": paper_id,
+                "status": status,
+                "reason": reason.strip(),
+                "resolved_by": resolved_by.strip(),
+                "resolved_at": now,
+            }
+
+    def screening_gate(self, project_id: str) -> dict[str, Any]:
+        workspace = self.screening_workspace(project_id)
+        if workspace["config"]["mode"] == "single":
+            pending = workspace["summary"]["pending"]
+            return {
+                "ready": pending == 0,
+                "pending": pending,
+                "unresolved": 0,
+                "blind": False,
+            }
+        if workspace["config"]["blind"]:
+            return {
+                "ready": False,
+                "pending": 0,
+                "unresolved": 0,
+                "blind": True,
+            }
+        summary = workspace["summary"]
+        unresolved = summary["conflict"] + summary["awaiting_resolution"]
+        return {
+            "ready": summary["pending"] == 0 and unresolved == 0,
+            "pending": summary["pending"],
+            "unresolved": unresolved,
+            "blind": False,
+        }
+
+    def screening_audit(self, project_id: str) -> dict[str, Any]:
+        """Return the complete review trail for controlled project export."""
+
+        with self.connection() as db:
+            if not _project_exists(db, project_id):
+                raise DatabaseError("Project not found")
+            config = _screening_config(db, project_id)
+            decisions = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT paper_id, reviewer_id, status, reason, decided_at
+                    FROM screening_decisions
+                    WHERE project_id = ?
+                    ORDER BY paper_id, reviewer_id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+            decision_events = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT id, paper_id, reviewer_id, status, reason, decided_at
+                    FROM screening_decision_events
+                    WHERE project_id = ?
+                    ORDER BY id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+            resolutions = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT paper_id, status, reason, resolved_by, resolved_at
+                    FROM screening_resolutions
+                    WHERE project_id = ?
+                    ORDER BY paper_id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+            resolution_events = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT id, paper_id, status, reason, resolved_by, resolved_at
+                    FROM screening_resolution_events
+                    WHERE project_id = ?
+                    ORDER BY id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+        return {
+            "config": config,
+            "decisions": decisions,
+            "decision_events": decision_events,
+            "resolutions": resolutions,
+            "resolution_events": resolution_events,
+            "gate": self.screening_gate(project_id),
+        }
 
     def save_evidence(
         self,
@@ -1182,6 +1728,246 @@ def _project(row: sqlite3.Row) -> Project:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
+
+
+def _project_exists(db: sqlite3.Connection, project_id: str) -> bool:
+    return (
+        db.execute(
+            "SELECT 1 FROM projects WHERE id = ?",
+            (project_id,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _paper_is_attached(
+    db: sqlite3.Connection,
+    project_id: str,
+    paper_id: int,
+) -> bool:
+    return (
+        db.execute(
+            """
+            SELECT 1 FROM project_papers
+            WHERE project_id = ? AND paper_id = ?
+            """,
+            (project_id, paper_id),
+        ).fetchone()
+        is not None
+    )
+
+
+def _screening_config(
+    db: sqlite3.Connection,
+    project_id: str,
+) -> dict[str, Any]:
+    row = db.execute(
+        """
+        SELECT mode, blind, reviewers_json, updated_at
+        FROM screening_configs
+        WHERE project_id = ?
+        """,
+        (project_id,),
+    ).fetchone()
+    if row is None:
+        return {
+            "mode": "single",
+            "blind": False,
+            "reviewers": [],
+            "updated_at": "",
+        }
+    return {
+        "mode": row["mode"],
+        "blind": bool(row["blind"]),
+        "reviewers": _loads(row["reviewers_json"], []),
+        "updated_at": row["updated_at"],
+    }
+
+
+def _save_screening_decision(
+    db: sqlite3.Connection,
+    decision: ScreeningDecision,
+) -> None:
+    values = (
+        decision.project_id,
+        decision.paper_id,
+        decision.reviewer,
+        decision.status,
+        decision.reason,
+        decision.decided_at,
+    )
+    db.execute(
+        """
+        INSERT INTO screening_decisions(
+            project_id, paper_id, reviewer_id, status, reason, decided_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(project_id, paper_id, reviewer_id) DO UPDATE SET
+            status = excluded.status,
+            reason = excluded.reason,
+            decided_at = excluded.decided_at
+        """,
+        values,
+    )
+    db.execute(
+        """
+        INSERT INTO screening_decision_events(
+            project_id, paper_id, reviewer_id, status, reason, decided_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        values,
+    )
+
+
+def _record_screening_transaction(
+    db: sqlite3.Connection,
+    decision: ScreeningDecision,
+) -> None:
+    if not _paper_is_attached(db, decision.project_id, decision.paper_id):
+        raise DatabaseError("Paper is not attached to this project")
+    config = _screening_config(db, decision.project_id)
+    reviewers = config["reviewers"]
+    if config["mode"] == "dual" and decision.reviewer not in reviewers:
+        raise DatabaseError(f"Reviewer must be one of: {', '.join(reviewers)}")
+
+    if config["mode"] == "single":
+        db.execute(
+            """
+            DELETE FROM screening_decisions
+            WHERE project_id = ? AND paper_id = ?
+            """,
+            (decision.project_id, decision.paper_id),
+        )
+    _save_screening_decision(db, decision)
+
+    if config["mode"] == "dual":
+        db.execute(
+            """
+            DELETE FROM screening_resolutions
+            WHERE project_id = ? AND paper_id = ?
+            """,
+            (decision.project_id, decision.paper_id),
+        )
+        if config["blind"]:
+            db.execute(
+                """
+                UPDATE project_papers
+                SET screening_status = ?, screening_reason = '',
+                    reviewer = '', decided_at = ''
+                WHERE project_id = ? AND paper_id = ?
+                """,
+                (
+                    ScreeningStatus.PENDING,
+                    decision.project_id,
+                    decision.paper_id,
+                ),
+            )
+        else:
+            _recompute_screening(
+                db,
+                decision.project_id,
+                decision.paper_id,
+                reviewers,
+            )
+    else:
+        db.execute(
+            """
+            UPDATE project_papers
+            SET screening_status = ?, screening_reason = ?, reviewer = ?,
+                decided_at = ?
+            WHERE project_id = ? AND paper_id = ?
+            """,
+            (
+                decision.status,
+                decision.reason,
+                decision.reviewer,
+                decision.decided_at,
+                decision.project_id,
+                decision.paper_id,
+            ),
+        )
+
+
+def _recompute_screening(
+    db: sqlite3.Connection,
+    project_id: str,
+    paper_id: int,
+    reviewers: list[str],
+) -> None:
+    rows = db.execute(
+        """
+        SELECT reviewer_id, status, reason, decided_at
+        FROM screening_decisions
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (project_id, paper_id),
+    ).fetchall()
+    decisions = {row["reviewer_id"]: row for row in rows}
+    consensus = evaluate_consensus(
+        {
+            reviewer: decisions[reviewer]["status"]
+            for reviewer in reviewers
+            if reviewer in decisions
+        },
+        reviewers,
+    )
+    reasons = list(
+        dict.fromkeys(
+            decisions[reviewer]["reason"].strip()
+            for reviewer in reviewers
+            if reviewer in decisions and decisions[reviewer]["reason"].strip()
+        )
+    )
+    decided_at = ""
+    if consensus.complete:
+        decided_at = max(
+            decisions[reviewer]["decided_at"]
+            for reviewer in reviewers
+            if reviewer in decisions
+        )
+    db.execute(
+        """
+        UPDATE project_papers
+        SET screening_status = ?, screening_reason = ?, reviewer = ?,
+            decided_at = ?
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (
+            consensus.status,
+            " | ".join(reasons) if consensus.complete else "",
+            "dual-consensus" if consensus.complete else "",
+            decided_at,
+            project_id,
+            paper_id,
+        ),
+    )
+
+
+def _all_dual_decisions_complete(
+    db: sqlite3.Connection,
+    project_id: str,
+    reviewers: list[str],
+) -> bool:
+    paper_count = int(
+        db.execute(
+            """
+            SELECT COUNT(*) AS amount FROM project_papers
+            WHERE project_id = ?
+            """,
+            (project_id,),
+        ).fetchone()["amount"]
+    )
+    decision_count = int(
+        db.execute(
+            """
+            SELECT COUNT(*) AS amount
+            FROM screening_decisions
+            WHERE project_id = ?
+              AND reviewer_id IN (?, ?)
+            """,
+            (project_id, reviewers[0], reviewers[1]),
+        ).fetchone()["amount"]
+    )
+    return decision_count == paper_count * len(reviewers)
 
 
 def _paper_row(row: sqlite3.Row) -> dict[str, Any]:

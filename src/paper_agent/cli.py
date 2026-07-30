@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .artifacts import load_state
 from .config import Settings
+from .database import DatabaseError
 from .llm import DemoLLM, LLMError, OpenAIResponsesLLM
 from .retrievers import FixtureRetriever
 from .workbench import ResearchWorkbench, WorkbenchError
@@ -34,7 +35,9 @@ def _print_projects(values: list[dict[str, object]]) -> None:
     for value in values:
         stats = value.get("stats") or {}
         print(f"{value['name']}  [{value['id']}]")
-        print(f"  {value.get('review_type', 'narrative')} · {value.get('language', '—')}")
+        print(
+            f"  {value.get('review_type', 'narrative')} · {value.get('language', '—')}"
+        )
         print(f"  问题：{value.get('research_question') or value.get('topic')}")
         if isinstance(stats, dict):
             print(
@@ -49,7 +52,9 @@ def _print_project(value: dict[str, object]) -> None:
     print(f"{value['name']}  [{value['id']}]")
     print(f"主题：{value.get('topic', '—')}")
     print(f"问题：{value.get('research_question') or value.get('topic', '—')}")
-    print(f"类型：{value.get('review_type', 'narrative')} · {value.get('language', '—')}")
+    print(
+        f"类型：{value.get('review_type', 'narrative')} · {value.get('language', '—')}"
+    )
     stats = value.get("stats") or {}
     if isinstance(stats, dict):
         print(
@@ -95,8 +100,7 @@ def _print_document_hits(values: list[dict[str, object]]) -> None:
         content = " ".join(str(value.get("content", "")).split())
         excerpt = content[:180] + ("…" if len(content) > 180 else "")
         print(
-            f"{index}. {value.get('filename', 'document')} "
-            f"· p.{value.get('page', '—')}"
+            f"{index}. {value.get('filename', 'document')} · p.{value.get('page', '—')}"
         )
         print(f"   {excerpt}")
 
@@ -315,6 +319,46 @@ def build_parser() -> argparse.ArgumentParser:
     )
     screen_decide.add_argument("--reason", default="")
     screen_decide.add_argument("--reviewer", default="human")
+    screen_configure = screen_commands.add_parser(
+        "configure",
+        help="配置单人或独立双人筛选",
+    )
+    screen_configure.add_argument("project_id")
+    screen_configure.add_argument(
+        "--mode",
+        choices=["single", "dual"],
+        default="dual",
+    )
+    screen_configure.add_argument(
+        "--reviewer",
+        action="append",
+        default=[],
+        help="双人模式需重复两次",
+    )
+    screen_configure.add_argument(
+        "--open",
+        action="store_true",
+        help="关闭盲审；仅双方完成后可用",
+    )
+    screen_status = screen_commands.add_parser(
+        "status",
+        help="查看个人队列或揭盲后的共识",
+    )
+    screen_status.add_argument("project_id")
+    screen_status.add_argument("--reviewer", default="")
+    screen_status.add_argument("--json", action="store_true")
+    screen_resolve = screen_commands.add_parser(
+        "resolve",
+        help="仲裁双人筛选分歧",
+    )
+    screen_resolve.add_argument("project_id")
+    screen_resolve.add_argument("paper_id", type=int)
+    screen_resolve.add_argument(
+        "status",
+        choices=["included", "excluded"],
+    )
+    screen_resolve.add_argument("--reason", required=True)
+    screen_resolve.add_argument("--reviewer", required=True, help="仲裁人标识")
 
     document = subparsers.add_parser("document", help="全文文档与检索")
     document_commands = document.add_subparsers(
@@ -581,7 +625,7 @@ def main(argv: list[str] | None = None) -> int:
                         _print_json(values)
                     else:
                         _print_screening(values)
-                else:
+                elif args.screen_command == "decide":
                     workbench.record_screening(
                         project_id=args.project_id,
                         paper_id=args.paper_id,
@@ -590,6 +634,60 @@ def main(argv: list[str] | None = None) -> int:
                         reviewer=args.reviewer,
                     )
                     print("已保存筛选决定。")
+                elif args.screen_command == "configure":
+                    reviewers = args.reviewer
+                    if args.open:
+                        current = workbench.database.get_screening_config(
+                            args.project_id
+                        )
+                        reviewers = current["reviewers"]
+                    value = workbench.configure_screening(
+                        args.project_id,
+                        mode=args.mode,
+                        reviewers=reviewers,
+                        blind=args.mode == "dual" and not args.open,
+                    )
+                    _print_json(value)
+                elif args.screen_command == "status":
+                    value = workbench.screening_workspace(
+                        args.project_id,
+                        reviewer=args.reviewer,
+                    )
+                    serializable = {
+                        **value,
+                        "papers": [
+                            {
+                                **{
+                                    key: item
+                                    for key, item in paper.items()
+                                    if key != "paper"
+                                },
+                                "paper": paper["paper"].to_dict(),
+                            }
+                            for paper in value["papers"]
+                        ],
+                    }
+                    if args.json:
+                        _print_json(serializable)
+                    else:
+                        print(
+                            f"模式：{value['config']['mode']} "
+                            f"· 盲审：{'是' if value['config']['blind'] else '否'}"
+                        )
+                        print(
+                            f"进度：{value['summary'].get('reviewer_completed', 0)}"
+                            f" / {value['summary']['total']}"
+                        )
+                        _print_screening(serializable["papers"])
+                else:
+                    value = workbench.resolve_screening(
+                        args.project_id,
+                        args.paper_id,
+                        status=args.status,
+                        reason=args.reason,
+                        resolved_by=args.reviewer,
+                    )
+                    _print_json(value)
                 return 0
             if args.document_command == "add":
                 record = workbench.documents.ingest(
@@ -603,10 +701,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.json:
                     _print_json(value)
                 else:
-                    print(
-                        f"已导入：{value['filename']} "
-                        f"· {value['page_count']} 页"
-                    )
+                    print(f"已导入：{value['filename']} · {value['page_count']} 页")
                     print(f"文档 ID：{value['id']}")
             else:
                 values = workbench.documents.search(
@@ -654,6 +749,7 @@ def main(argv: list[str] | None = None) -> int:
         LLMError,
         WorkflowError,
         WorkbenchError,
+        DatabaseError,
     ) as exc:
         print(f"错误：{exc}", file=sys.stderr)
         return 2

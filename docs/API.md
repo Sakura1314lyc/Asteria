@@ -38,6 +38,9 @@ paper-agent serve
 | GET | `/projects/{id}/papers` | 论文与筛选状态 |
 | POST | `/projects/{id}/bibliography` | 导入 RIS、BibTeX 或 CSL JSON 文献库 |
 | POST | `/projects/{id}/screening` | 批量保存人工决定 |
+| GET/PUT | `/projects/{id}/screening/config` | 读取或配置单人/双人盲审 |
+| GET | `/projects/{id}/screening/workspace?reviewer=...` | 获取隐私裁剪后的 reviewer 工作区 |
+| POST | `/projects/{id}/screening/{paper_id}/resolve` | 仲裁双人筛选分歧 |
 | POST | `/runs/{id}/continue` | 通过人工门后继续 |
 | GET/POST | `/projects/{id}/conversations` | 列出或创建项目对话 |
 | GET | `/conversations/{id}` | 对话与消息历史 |
@@ -72,6 +75,17 @@ Web 的 `demo=true` 会同时使用 DemoLLM 和安装包内置合成论文，确
 返回值区分新增记录、项目中已存在记录、被补全元数据的记录、文件内重复与损坏
 记录。导入在单个 SQLite 事务中完成，不修改已有筛选状态，也不会以空字段覆盖
 既有摘要、作者或标识符。当前是文件导入，不是 Zotero Web API 同步。
+
+## 双人筛选
+
+双人模式要求恰好两个唯一 reviewer。`blind=true` 时，workspace 响应只包含当前
+reviewer 自己的决定；双方对所有论文完成决定后才能把 `blind` 改为 `false`。
+相同决定自动形成共识，included/excluded 相反形成 conflict，任何包含 `maybe`
+的完整组合进入 awaiting_resolution。冲突与待讨论项都必须显式仲裁后才能继续运行。
+
+`POST /screening` 的整个 decisions 数组在一个 SQLite 事务中提交。任一论文、
+reviewer 或状态无效时整批回滚。修改 reviewer 决定会删除当前仲裁并重新计算共识，
+但追加式历史不会删除。
 
 `POST /projects/{id}/runs` 接受 `agent_id`、`connection_id`、`demo` 和
 `stop_for_screening`。运行只持久化连接名称、模型和 ID，不保存 API Key。
