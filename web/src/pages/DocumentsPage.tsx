@@ -8,6 +8,7 @@ import {
   X
 } from "lucide-react";
 import { FormEvent, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, apiUrl } from "../api/client";
 import type { SearchHit } from "../api/types";
 import {
@@ -23,17 +24,40 @@ export function DocumentsPage() {
   const { project } = useProjectContext();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchHit[]>([]);
+  const requestedPaperId = Number(searchParams.get("paper_id") || 0);
   const documents = useQuery({
     queryKey: ["documents", project.id],
     queryFn: () => api.listDocuments(project.id)
   });
+  const papers = useQuery({
+    queryKey: ["papers", project.id],
+    queryFn: () => api.listPapers(project.id)
+  });
+  const selectedPaperId = papers.data?.some(
+    (paper) => paper.id === requestedPaperId
+  )
+    ? requestedPaperId
+    : 0;
   const upload = useMutation({
-    mutationFn: (file: File) => api.uploadDocument(project.id, file),
+    mutationFn: (file: File) =>
+      api.uploadDocument(
+        project.id,
+        file,
+        selectedPaperId > 0 ? selectedPaperId : undefined
+      ),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["documents", project.id] });
-      await queryClient.invalidateQueries({ queryKey: ["project", project.id] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["documents", project.id] }),
+        queryClient.invalidateQueries({ queryKey: ["project", project.id] }),
+        queryClient.invalidateQueries({ queryKey: ["papers", project.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["fulltext-workspace", project.id]
+        }),
+        queryClient.invalidateQueries({ queryKey: ["prisma-flow", project.id] })
+      ]);
       if (inputRef.current) inputRef.current.value = "";
     }
   });
@@ -47,10 +71,18 @@ export function DocumentsPage() {
     if (query.trim().length >= 2) search.mutate(query.trim());
   }
 
-  if (documents.isLoading) return <LoadingState label="正在读取全文库" />;
-  if (documents.isError) {
+  if (documents.isLoading || papers.isLoading) {
+    return <LoadingState label="正在读取全文库" />;
+  }
+  if (documents.isError || papers.isError) {
     return (
-      <ErrorState error={documents.error} retry={() => documents.refetch()} />
+      <ErrorState
+        error={documents.error || papers.error}
+        retry={() => {
+          documents.refetch();
+          papers.refetch();
+        }}
+      />
     );
   }
 
@@ -59,7 +91,32 @@ export function DocumentsPage() {
       <SectionTitle
         title="把强结论带回全文页码"
         detail="支持 PDF、Markdown 和纯文本；检索命中保留文档与页码。"
-        action={
+      />
+      <section className="document-upload-bar">
+        <label>
+          <span>关联到论文</span>
+          <select
+            aria-label="关联到论文"
+            value={selectedPaperId || ""}
+            onChange={(event) => {
+              const paperId = event.target.value;
+              setSearchParams(paperId ? { paper_id: paperId } : {});
+            }}
+          >
+            <option value="">不关联，仅加入全文库</option>
+            {papers.data?.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.evidence_id} · {item.paper.title}
+              </option>
+            ))}
+          </select>
+          <small>
+            {selectedPaperId
+              ? "上传成功后会自动记录这篇报告已取得全文。"
+              : "系统综述的最终资格评审需要先关联对应论文。"}
+          </small>
+        </label>
+        <div>
           <label className="button button--primary button--medium upload-button">
             <Upload size={15} />
             {upload.isPending ? "正在处理…" : "导入全文"}
@@ -74,8 +131,9 @@ export function DocumentsPage() {
               }}
             />
           </label>
-        }
-      />
+          <small>PDF、TXT 或 MD</small>
+        </div>
+      </section>
       {upload.isError && <ErrorState error={upload.error} />}
       <div className="documents-grid">
         <section className="document-list">

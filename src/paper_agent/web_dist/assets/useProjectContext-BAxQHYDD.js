@@ -1,0 +1,1 @@
+import{y as e}from"./index-Lt4kBSAF.js";function t(){return e()}export{t};

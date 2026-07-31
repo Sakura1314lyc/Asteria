@@ -435,7 +435,9 @@ function FullTextPaperDesk(props: {
         <div className="fulltext-files">
           <header>
             <span className="eyebrow">报告全文</span>
-            <Link to={`/app/projects/${props.projectId}/documents`}>
+            <Link
+              to={`/app/projects/${props.projectId}/documents?paper_id=${props.paper.id}`}
+            >
               <FileUp size={14} /> 上传并关联
             </Link>
           </header>
@@ -554,7 +556,7 @@ function RetrievalPanel(
       </button>
       <Link
         className="retrieval-action"
-        to={`/app/projects/${props.projectId}/documents`}
+        to={`/app/projects/${props.projectId}/documents?paper_id=${props.paper.id}`}
       >
         <FileUp size={17} />
         <span>
