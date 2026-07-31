@@ -13,7 +13,7 @@ from paper_agent.models import EvidenceCard, Paper
 from paper_agent.quality import assess_evidence_quality
 from paper_agent.retrievers import FixtureRetriever
 from paper_agent.screening import ScreeningEngine
-from paper_agent.workbench import ResearchWorkbench
+from paper_agent.workbench import ResearchWorkbench, WorkbenchError
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "examples" / "demo_papers.json"
@@ -171,6 +171,96 @@ class WorkbenchTests(unittest.TestCase):
             self.assertTrue((run_dir / "cs_evidence_matrix.csv").exists())
             self.assertTrue((run_dir / "reproducibility.json").exists())
             self.assertEqual(len(workbench.database.list_reports(project.id)), 1)
+
+    def test_systematic_run_uses_only_fulltext_inclusions_downstream(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            workbench = ResearchWorkbench(self.make_settings(root))
+            project = workbench.create_project(
+                name="Two-stage systematic review",
+                topic="research agents",
+                research_question="How are evidence-grounded agents designed?",
+                review_type="systematic",
+            )
+            run = workbench.create_run(project.id)
+            run_dir = workbench.execute_run(
+                run.id,
+                llm=DemoLLM(project.topic),
+                retrievers=[FixtureRetriever(FIXTURE)],
+            )
+            rows = workbench.database.list_project_papers(project.id)
+            candidates = rows[:2]
+            for index, row in enumerate(rows):
+                workbench.record_screening(
+                    project_id=project.id,
+                    paper_id=row["id"],
+                    status="included" if index < 2 else "excluded",
+                    reason="Title and abstract eligibility decision",
+                    reviewer="unit-test",
+                )
+            workbench.configure_fulltext_screening(
+                project.id,
+                enabled=True,
+            )
+            for index, row in enumerate(candidates):
+                article = root / f"fulltext-{index}.txt"
+                article.write_text(
+                    f"Complete report {index}: methods, evaluation, and findings.",
+                    encoding="utf-8",
+                )
+                workbench.documents.ingest(
+                    project_id=project.id,
+                    source=article,
+                    paper_id=row["id"],
+                )
+            with self.assertRaises(WorkbenchError):
+                workbench.continue_after_screening(
+                    run.id,
+                    llm=DemoLLM(project.topic),
+                    retrievers=[FixtureRetriever(FIXTURE)],
+                )
+            workbench.record_fulltext_screening_batch(
+                project_id=project.id,
+                decisions=[
+                    {
+                        "paper_id": candidates[0]["id"],
+                        "status": "included",
+                        "reason": "Eligible complete empirical report",
+                        "reviewer": "unit-test",
+                    },
+                    {
+                        "paper_id": candidates[1]["id"],
+                        "status": "excluded",
+                        "reason": "No primary empirical contribution",
+                        "exclusion_code": "not_primary_research",
+                        "reviewer": "unit-test",
+                    },
+                ],
+            )
+
+            workbench.continue_after_screening(
+                run.id,
+                llm=DemoLLM(project.topic),
+                retrievers=[FixtureRetriever(FIXTURE)],
+            )
+
+            state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+            review_flow = json.loads(
+                (run_dir / "review_flow.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state["stage"], "completed")
+            self.assertEqual(
+                [paper["paper_id"] for paper in state["papers"]],
+                [candidates[0]["evidence_id"]],
+            )
+            self.assertEqual(
+                review_flow["reports_excluded_after_fulltext"],
+                1,
+            )
+            self.assertEqual(
+                review_flow["fulltext_exclusion_reasons"],
+                {"not_primary_research": 1},
+            )
 
 
 if __name__ == "__main__":

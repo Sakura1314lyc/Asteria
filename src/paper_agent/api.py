@@ -60,7 +60,7 @@ def create_app(settings: Settings | None = None):
 
     app = FastAPI(
         title="Paper Research Agent API",
-        version="0.7.0",
+        version="0.8.0",
         description=(
             "Local-first API for literature discovery, screening, evidence "
             "extraction, quality appraisal, full-text search, and report generation."
@@ -144,6 +144,34 @@ def create_app(settings: Settings | None = None):
         reason: str = Field(min_length=1, max_length=4000)
         resolved_by: str = Field(min_length=1, max_length=100)
 
+    class FullTextConfigUpdate(BaseModel):
+        enabled: bool = True
+        blind: bool = True
+
+    class FullTextRetrievalRequest(BaseModel):
+        status: str = Field(max_length=30)
+        reason: str = Field(default="", max_length=4000)
+        updated_by: str = Field(default="human", min_length=1, max_length=100)
+
+    class FullTextScreeningItem(BaseModel):
+        paper_id: int
+        status: str = Field(max_length=20)
+        reason: str = Field(default="", max_length=4000)
+        exclusion_code: str = Field(default="", max_length=100)
+        reviewer: str = Field(default="human", min_length=1, max_length=100)
+
+    class FullTextScreeningBatch(BaseModel):
+        decisions: list[FullTextScreeningItem] = Field(
+            min_length=1,
+            max_length=1000,
+        )
+
+    class FullTextResolutionRequest(BaseModel):
+        status: str = Field(max_length=20)
+        reason: str = Field(min_length=1, max_length=4000)
+        exclusion_code: str = Field(default="", max_length=100)
+        resolved_by: str = Field(min_length=1, max_length=100)
+
     class ClassificationRequest(BaseModel):
         text: str = Field(min_length=2, max_length=5000)
         limit: int = Field(default=3, ge=1, le=10)
@@ -224,7 +252,7 @@ def create_app(settings: Settings | None = None):
         )
         return {
             "status": "ok",
-            "version": "0.7.0",
+            "version": "0.8.0",
             "database": str(active_settings.database_path),
             "specialization": "computer_science",
             "web_available": (configured_web / "index.html").is_file(),
@@ -641,6 +669,113 @@ def create_app(settings: Settings | None = None):
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/projects/{project_id}/screening/fulltext/config")
+    def get_fulltext_screening_config(project_id: str) -> dict[str, Any]:
+        project_or_404(project_id)
+        return workbench.database.get_screening_config(project_id)
+
+    @app.put("/projects/{project_id}/screening/fulltext/config")
+    def update_fulltext_screening_config(
+        project_id: str,
+        payload: FullTextConfigUpdate,
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        try:
+            return workbench.configure_fulltext_screening(
+                project_id,
+                enabled=payload.enabled,
+                blind=payload.blind,
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/projects/{project_id}/screening/fulltext/workspace")
+    def get_fulltext_screening_workspace(
+        project_id: str,
+        reviewer: str = Query(default="", max_length=100),
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        try:
+            workspace = workbench.fulltext_screening_workspace(
+                project_id,
+                reviewer=reviewer,
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        workspace["papers"] = [
+            {
+                **{key: value for key, value in paper.items() if key != "paper"},
+                "paper": paper["paper"].to_dict(),
+            }
+            for paper in workspace["papers"]
+        ]
+        return workspace
+
+    @app.post("/projects/{project_id}/screening/fulltext")
+    def save_fulltext_screening(
+        project_id: str,
+        payload: FullTextScreeningBatch,
+    ) -> dict[str, int]:
+        project_or_404(project_id)
+        try:
+            workbench.record_fulltext_screening_batch(
+                project_id=project_id,
+                decisions=[decision.model_dump() for decision in payload.decisions],
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"updated": len(payload.decisions)}
+
+    @app.post("/projects/{project_id}/screening/fulltext/{paper_id}/retrieval")
+    def save_fulltext_retrieval(
+        project_id: str,
+        paper_id: int,
+        payload: FullTextRetrievalRequest,
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        try:
+            return workbench.record_fulltext_retrieval(
+                project_id,
+                paper_id,
+                status=payload.status,
+                reason=payload.reason,
+                updated_by=payload.updated_by,
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/projects/{project_id}/screening/fulltext/{paper_id}/resolve")
+    def resolve_fulltext_screening(
+        project_id: str,
+        paper_id: int,
+        payload: FullTextResolutionRequest,
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        try:
+            return workbench.resolve_fulltext_screening(
+                project_id,
+                paper_id,
+                status=payload.status,
+                reason=payload.reason,
+                exclusion_code=payload.exclusion_code,
+                resolved_by=payload.resolved_by,
+            )
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/projects/{project_id}/prisma")
+    def get_prisma_flow(project_id: str) -> dict[str, Any]:
+        project_or_404(project_id)
+        return workbench.database.prisma_flow(project_id)
 
     @app.post("/runs/{run_id}/continue", status_code=202)
     def continue_run(

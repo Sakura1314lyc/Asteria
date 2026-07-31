@@ -23,6 +23,7 @@ def export_project(
     reports = database.list_reports(project_id)
     documents = database.list_documents(project_id)
     screening_audit = database.screening_audit(project_id)
+    prisma_flow = database.prisma_flow(project_id)
     manifest: list[dict[str, str | int]] = []
 
     def add_file(archive: ZipFile, source: Path, arcname: str) -> None:
@@ -59,6 +60,10 @@ def export_project(
         archive.writestr(
             "screening_audit.json",
             json.dumps(screening_audit, ensure_ascii=False, indent=2),
+        )
+        archive.writestr(
+            "prisma_flow.json",
+            json.dumps(prisma_flow, ensure_ascii=False, indent=2),
         )
         archive.writestr("runs.json", json.dumps(runs, ensure_ascii=False, indent=2))
         archive.writestr(

@@ -41,6 +41,12 @@ paper-agent serve
 | GET/PUT | `/projects/{id}/screening/config` | 读取或配置单人/双人盲审 |
 | GET | `/projects/{id}/screening/workspace?reviewer=...` | 获取隐私裁剪后的 reviewer 工作区 |
 | POST | `/projects/{id}/screening/{paper_id}/resolve` | 仲裁双人筛选分歧 |
+| GET/PUT | `/projects/{id}/screening/fulltext/config` | 读取、启用或揭盲全文筛选 |
+| GET | `/projects/{id}/screening/fulltext/workspace?reviewer=...` | 获取全文获取与资格评审队列 |
+| POST | `/projects/{id}/screening/fulltext` | 批量保存全文资格决定 |
+| POST | `/projects/{id}/screening/fulltext/{paper_id}/retrieval` | 保存全文获取状态与原因 |
+| POST | `/projects/{id}/screening/fulltext/{paper_id}/resolve` | 仲裁全文决定或排除原因分歧 |
+| GET | `/projects/{id}/prisma` | 获取两阶段筛选运行计数 |
 | POST | `/runs/{id}/continue` | 通过人工门后继续 |
 | GET/POST | `/projects/{id}/conversations` | 列出或创建项目对话 |
 | GET | `/conversations/{id}` | 对话与消息历史 |
@@ -86,6 +92,21 @@ reviewer 自己的决定；双方对所有论文完成决定后才能把 `blind`
 `POST /screening` 的整个 decisions 数组在一个 SQLite 事务中提交。任一论文、
 reviewer 或状态无效时整批回滚。修改 reviewer 决定会删除当前仲裁并重新计算共识，
 但追加式历史不会删除。
+
+## 全文筛选
+
+全文筛选只能在标题/摘要门禁完成后启用。候选报告先记录
+`not_requested`、`sought`、`retrieved` 或 `not_retrieved`；`retrieved`
+必须已有与论文关联的文档，`not_retrieved` 必须填写原因。上传并关联文档会自动
+写入 `retrieved` 事件。
+
+全文排除必须提供 `exclusion_code` 和可复核说明。双人项目沿用标题阶段的两位
+reviewer，但全文盲审单独启用和揭盲。两人都排除但主要排除代码不同，同样进入
+`awaiting_resolution`。批量决定使用一个 SQLite 事务。
+
+标题决定修订为非候选状态时，当前全文决定与仲裁会失效；追加式历史、获取事件和
+已关联文档不删除。`/prisma` 返回当前操作计数与全文排除原因汇总，不代表系统
+自动验证了 PRISMA 合规性。
 
 `POST /projects/{id}/runs` 接受 `agent_id`、`connection_id`、`demo` 和
 `stop_for_screening`。运行只持久化连接名称、模型和 ID，不保存 API Key。

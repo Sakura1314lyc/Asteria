@@ -3,16 +3,19 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Check,
   Eye,
   EyeOff,
   ExternalLink,
   HelpCircle,
+  ListChecks,
   RotateCcw,
   Users,
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type {
   ScreeningPaper,
@@ -20,6 +23,7 @@ import type {
 } from "../api/types";
 import { Button, ErrorState, LoadingState, Meter } from "../components/Ui";
 import { useProjectContext } from "../hooks/useProjectContext";
+import { FullTextScreening } from "./FullTextScreening";
 
 const defaultReason: Record<Exclude<ScreeningStatus, "pending">, string> = {
   included: "符合研究问题，纳入后续证据提取",
@@ -37,6 +41,53 @@ function statusLabel(status: ScreeningStatus) {
 }
 
 export function ScreeningPage() {
+  const { project } = useProjectContext();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const stage =
+    searchParams.get("stage") === "fulltext" ? "fulltext" : "title";
+  function setStage(next: "title" | "fulltext") {
+    setSearchParams(next === "fulltext" ? { stage: "fulltext" } : {});
+  }
+  const config = useQuery({
+    queryKey: ["screening-config", project.id],
+    queryFn: () => api.getScreeningConfig(project.id)
+  });
+
+  return (
+    <div className="screening-studio">
+      <nav className="screening-stage-nav" aria-label="筛选阶段">
+        <button
+          className={stage === "title" ? "is-active" : ""}
+          onClick={() => setStage("title")}
+        >
+          <span className="screening-stage-nav__number">01</span>
+          <ListChecks size={17} />
+          <span>
+            <strong>标题与摘要</strong>
+            <small>初步资格判断</small>
+          </span>
+        </button>
+        <i aria-hidden="true" />
+        <button
+          className={stage === "fulltext" ? "is-active" : ""}
+          onClick={() => setStage("fulltext")}
+        >
+          <span className="screening-stage-nav__number">02</span>
+          <BookOpen size={17} />
+          <span>
+            <strong>报告全文</strong>
+            <small>
+              {config.data?.fulltext_enabled ? "获取与最终纳入" : "尚未启用"}
+            </small>
+          </span>
+        </button>
+      </nav>
+      {stage === "title" ? <TitleAbstractScreening /> : <FullTextScreening />}
+    </div>
+  );
+}
+
+function TitleAbstractScreening() {
   const { project } = useProjectContext();
   const queryClient = useQueryClient();
   const [reviewer, setReviewer] = useState("");
@@ -221,7 +272,7 @@ export function ScreeningPage() {
   }
 
   return (
-    <div className="screening-studio">
+    <div className="screening-stage-body">
       <ReviewBar
         isDual={Boolean(isDual)}
         isBlind={isBlind}

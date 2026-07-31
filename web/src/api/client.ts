@@ -6,11 +6,13 @@ import type {
   Conversation,
   CsAnalysis,
   DocumentRecord,
+  FullTextWorkspace,
   Job,
   LiteratureGraph,
   ModelConnection,
   Project,
   ProjectPaper,
+  PrismaFlow,
   ReportPayload,
   ResearchBundle,
   ReviewProtocol,
@@ -263,6 +265,83 @@ export const api = {
         method: "POST",
         body: JSON.stringify(payload)
       }
+    ),
+
+  getFullTextWorkspace: (projectId: string, reviewer?: string) =>
+    request<FullTextWorkspace>(
+      `/projects/${encodeURIComponent(projectId)}/screening/fulltext/workspace${queryString({
+        reviewer
+      })}`
+    ),
+
+  updateFullTextConfig: (
+    projectId: string,
+    payload: { enabled: boolean; blind: boolean }
+  ) =>
+    request<ScreeningConfig>(
+      `/projects/${encodeURIComponent(projectId)}/screening/fulltext/config`,
+      {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      }
+    ),
+
+  saveFullTextRetrieval: (
+    projectId: string,
+    paperId: number,
+    payload: {
+      status: "not_requested" | "sought" | "retrieved" | "not_retrieved";
+      reason: string;
+      updated_by: string;
+    }
+  ) =>
+    request<{
+      paper_id: number;
+      status: string;
+      reason: string;
+      updated_by: string;
+      updated_at: string;
+    }>(
+      `/projects/${encodeURIComponent(projectId)}/screening/fulltext/${paperId}/retrieval`,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+
+  saveFullTextScreening: (
+    projectId: string,
+    decisions: Array<{
+      paper_id: number;
+      status: string;
+      reason: string;
+      exclusion_code: string;
+      reviewer: string;
+    }>
+  ) =>
+    request<{ updated: number }>(
+      `/projects/${encodeURIComponent(projectId)}/screening/fulltext`,
+      {
+        method: "POST",
+        body: JSON.stringify({ decisions })
+      }
+    ),
+
+  resolveFullTextScreening: (
+    projectId: string,
+    paperId: number,
+    payload: {
+      status: "included" | "excluded";
+      reason: string;
+      exclusion_code: string;
+      resolved_by: string;
+    }
+  ) =>
+    request<import("./types").ScreeningResolution>(
+      `/projects/${encodeURIComponent(projectId)}/screening/fulltext/${paperId}/resolve`,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
+
+  getPrismaFlow: (projectId: string) =>
+    request<PrismaFlow>(
+      `/projects/${encodeURIComponent(projectId)}/prisma`
     ),
 
   continueRun: (

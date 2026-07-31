@@ -48,6 +48,13 @@ class DocumentStore:
         digest = _sha256(source_path)
         existing = self.database.get_document_by_hash(project_id, digest)
         if existing:
+            if paper_id is not None:
+                self.database.link_document_to_paper(
+                    project_id,
+                    existing["id"],
+                    paper_id,
+                )
+                existing["paper_id"] = paper_id
             return DocumentRecord(
                 id=existing["id"],
                 project_id=existing["project_id"],

@@ -23,6 +23,7 @@ Infrastructure: SQLite / FTS5 / file store / retrievers / LLM
 - `domain.py`: 项目、研究方案、运行、筛选和文档实体。
 - `models.py`: 工作流内论文、证据卡和检查点状态。
 - `screening.py`: 可解释规则建议，不冒充人工决定。
+- `fulltext_screening.py`: 全文获取状态、主要排除原因和双人共识规则。
 - `quality.py`: 当前摘要和元数据的可提取性评价。
 - `profiles.py`: narrative、scoping、systematic、thesis 四种流程配置。
 - `agent_profiles.py`: 可选择、可导出的 CS 科研 Agent 行为配置。
@@ -52,8 +53,10 @@ Infrastructure: SQLite / FTS5 / file store / retrievers / LLM
 1. `execute_run()` 运行到 `searched`。
 2. 论文写入 `project_papers`，状态为 `pending`。
 3. 单人模式直接记录 included/excluded/maybe；双人模式分别保存 reviewer 决定并计算共识。
-4. `continue_after_screening()` 检查不存在 pending；双人模式还要求不存在 conflict 或 awaiting_resolution。
-5. Agent 继续 evidence、quality、graph、report、audit。
+4. 标题门完成后可启用全文阶段；候选报告必须 retrieved 或记录 not_retrieved。
+5. 全文决定复用单人/双人模式，但有独立盲审状态和结构化主要排除原因。
+6. `continue_after_screening()` 同时检查两个门，只让全文 included 的论文进入后续。
+7. Agent 继续 evidence、quality、graph、report、audit。
 
 ### Infrastructure
 
@@ -74,6 +77,9 @@ erDiagram
     PROJECTS ||--o{ SCREENING_DECISIONS : records
     PAPERS ||--o{ SCREENING_DECISIONS : receives
     PROJECTS ||--o{ SCREENING_RESOLUTIONS : arbitrates
+    PROJECTS ||--o{ FULLTEXT_SCREENING_DECISIONS : records
+    PROJECTS ||--o{ FULLTEXT_SCREENING_RESOLUTIONS : arbitrates
+    PAPERS ||--o{ FULLTEXT_SCREENING_DECISIONS : receives
     PROJECTS ||--o{ RUNS : has
     RUNS ||--o{ RUN_EVENTS : emits
     PROJECTS ||--o{ DOCUMENTS : owns

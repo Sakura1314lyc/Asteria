@@ -42,7 +42,7 @@ class ApiWebTests(unittest.TestCase):
             app = create_app(self.make_settings(root))
             with TestClient(app) as client:
                 health = client.get("/health").json()
-                self.assertEqual(health["version"], "0.7.0")
+                self.assertEqual(health["version"], "0.8.0")
                 self.assertTrue(health["web_available"])
                 self.assertEqual(client.get("/").status_code, 200)
                 self.assertIn("Asteria", client.get("/app").text)
@@ -429,6 +429,117 @@ ER  -
                     },
                 )
                 self.assertEqual(resolution.status_code, 200)
+
+    def test_fulltext_screening_api_and_prisma_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = create_app(self.make_settings(root))
+            with TestClient(app) as client:
+                project_id = client.post(
+                    "/projects",
+                    json={
+                        "name": "Full-text API",
+                        "topic": "systems evaluation",
+                    },
+                ).json()["id"]
+                bibliography = b"""TY  - CONF
+TI  - A Systems Position Paper
+AU  - Doe, Jane
+PY  - 2025
+ER  -
+"""
+                self.assertEqual(
+                    client.post(
+                        f"/projects/{project_id}/bibliography",
+                        files={
+                            "file": (
+                                "fulltext.ris",
+                                bibliography,
+                                "application/x-research-info-systems",
+                            )
+                        },
+                    ).status_code,
+                    201,
+                )
+                paper_id = client.get(f"/projects/{project_id}/papers").json()[0]["id"]
+                self.assertEqual(
+                    client.post(
+                        f"/projects/{project_id}/screening",
+                        json={
+                            "decisions": [
+                                {
+                                    "paper_id": paper_id,
+                                    "status": "included",
+                                    "reason": "Potentially eligible",
+                                    "reviewer": "alice",
+                                }
+                            ]
+                        },
+                    ).status_code,
+                    200,
+                )
+                config = client.put(
+                    f"/projects/{project_id}/screening/fulltext/config",
+                    json={"enabled": True, "blind": False},
+                )
+                self.assertEqual(config.status_code, 200)
+                upload = client.post(
+                    f"/projects/{project_id}/documents",
+                    params={"paper_id": paper_id},
+                    files={
+                        "file": (
+                            "paper.txt",
+                            b"Position paper without an empirical evaluation.",
+                            "text/plain",
+                        )
+                    },
+                )
+                self.assertEqual(upload.status_code, 201)
+                workspace = client.get(
+                    f"/projects/{project_id}/screening/fulltext/workspace"
+                )
+                self.assertEqual(workspace.status_code, 200)
+                self.assertEqual(
+                    workspace.json()["papers"][0]["retrieval_status"],
+                    "retrieved",
+                )
+                invalid = client.post(
+                    f"/projects/{project_id}/screening/fulltext",
+                    json={
+                        "decisions": [
+                            {
+                                "paper_id": paper_id,
+                                "status": "excluded",
+                                "reason": "No evaluation",
+                                "reviewer": "alice",
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(invalid.status_code, 422)
+                decided = client.post(
+                    f"/projects/{project_id}/screening/fulltext",
+                    json={
+                        "decisions": [
+                            {
+                                "paper_id": paper_id,
+                                "status": "excluded",
+                                "reason": "No empirical evaluation",
+                                "exclusion_code": "not_primary_research",
+                                "reviewer": "alice",
+                            }
+                        ]
+                    },
+                )
+                self.assertEqual(decided.status_code, 200)
+                flow = client.get(f"/projects/{project_id}/prisma").json()
+                self.assertEqual(flow["reports_assessed_for_eligibility"], 1)
+                self.assertEqual(flow["reports_excluded_after_fulltext"], 1)
+                archive = client.get(f"/projects/{project_id}/export")
+                archive_path = root / "fulltext-export.zip"
+                archive_path.write_bytes(archive.content)
+                with ZipFile(archive_path) as exported:
+                    self.assertIn("prisma_flow.json", exported.namelist())
 
 
 if __name__ == "__main__":

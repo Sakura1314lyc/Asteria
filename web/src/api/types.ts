@@ -109,6 +109,14 @@ export interface ProjectPaper {
   reviewer: string;
   tags: string[];
   decided_at: string;
+  retrieval_status: RetrievalStatus;
+  retrieval_reason: string;
+  retrieval_updated_at: string;
+  fulltext_status: ScreeningStatus;
+  fulltext_reason: string;
+  fulltext_exclusion_code: string;
+  fulltext_reviewer: string;
+  fulltext_decided_at: string;
   paper: Paper;
 }
 
@@ -117,6 +125,7 @@ export interface ScreeningDecisionRecord {
   status: ScreeningStatus;
   reason: string;
   decided_at: string;
+  exclusion_code?: string;
 }
 
 export interface ScreeningResolution {
@@ -124,12 +133,15 @@ export interface ScreeningResolution {
   reason: string;
   resolved_by: string;
   resolved_at: string;
+  exclusion_code?: string;
 }
 
 export interface ScreeningConfig {
   mode: "single" | "dual";
   blind: boolean;
   reviewers: string[];
+  fulltext_enabled: boolean;
+  fulltext_blind: boolean;
   updated_at: string;
 }
 
@@ -139,6 +151,8 @@ export interface ScreeningPaper extends ProjectPaper {
     | "agreed"
     | "conflict"
     | "awaiting_resolution"
+    | "awaiting_retrieval"
+    | "not_retrieved"
     | "resolved"
     | "blinded";
   my_decision: ScreeningDecisionRecord | null;
@@ -158,6 +172,64 @@ export interface ScreeningWorkspace {
     resolved?: number;
   };
   papers: ScreeningPaper[];
+}
+
+export type RetrievalStatus =
+  | "not_requested"
+  | "sought"
+  | "retrieved"
+  | "not_retrieved";
+
+export interface FullTextDocument {
+  id: string;
+  paper_id: number;
+  filename: string;
+  page_count: number;
+}
+
+export interface FullTextPaper extends ScreeningPaper {
+  retrieval_status: RetrievalStatus;
+  retrieval_reason: string;
+  retrieval_updated_at: string;
+  fulltext_status: ScreeningStatus;
+  fulltext_reason: string;
+  fulltext_exclusion_code: string;
+  fulltext_reviewer: string;
+  fulltext_decided_at: string;
+  documents: FullTextDocument[];
+}
+
+export interface FullTextWorkspace {
+  config: ScreeningConfig;
+  exclusion_reasons: Record<string, string>;
+  summary: {
+    total_candidates: number;
+    not_requested: number;
+    sought: number;
+    retrieved: number;
+    not_retrieved: number;
+    reviewer_completed: number;
+    pending?: number;
+    agreed?: number;
+    conflict?: number;
+    awaiting_resolution?: number;
+    resolved?: number;
+  };
+  papers: FullTextPaper[];
+}
+
+export interface PrismaFlow {
+  identified_records: number;
+  records_screened: number;
+  records_excluded: number;
+  reports_sought_for_retrieval: number;
+  reports_not_retrieved: number;
+  reports_awaiting_retrieval: number;
+  reports_assessed_for_eligibility: number;
+  reports_excluded_after_fulltext: number;
+  fulltext_exclusion_reasons: Record<string, number>;
+  studies_included_in_synthesis: number;
+  fulltext_screening_enabled: boolean;
 }
 
 export interface BibliographyImportResult {

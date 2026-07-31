@@ -359,6 +359,70 @@ def build_parser() -> argparse.ArgumentParser:
     )
     screen_resolve.add_argument("--reason", required=True)
     screen_resolve.add_argument("--reviewer", required=True, help="仲裁人标识")
+    screen_fulltext = screen_commands.add_parser(
+        "fulltext",
+        help="管理全文获取与最终纳排",
+    )
+    fulltext_commands = screen_fulltext.add_subparsers(
+        dest="fulltext_command",
+        required=True,
+    )
+    fulltext_configure = fulltext_commands.add_parser(
+        "configure",
+        help="启用、揭盲或关闭未开始的全文筛选",
+    )
+    fulltext_configure.add_argument("project_id")
+    fulltext_configure.add_argument("--disable", action="store_true")
+    fulltext_configure.add_argument(
+        "--open",
+        action="store_true",
+        help="双方完成后揭盲",
+    )
+    fulltext_status = fulltext_commands.add_parser(
+        "status",
+        help="查看全文获取与筛选队列",
+    )
+    fulltext_status.add_argument("project_id")
+    fulltext_status.add_argument("--reviewer", default="")
+    fulltext_status.add_argument("--json", action="store_true")
+    fulltext_retrieve = fulltext_commands.add_parser(
+        "retrieve",
+        help="记录全文获取状态",
+    )
+    fulltext_retrieve.add_argument("project_id")
+    fulltext_retrieve.add_argument("paper_id", type=int)
+    fulltext_retrieve.add_argument(
+        "status",
+        choices=["not_requested", "sought", "retrieved", "not_retrieved"],
+    )
+    fulltext_retrieve.add_argument("--reason", default="")
+    fulltext_retrieve.add_argument("--reviewer", default="human")
+    fulltext_decide = fulltext_commands.add_parser(
+        "decide",
+        help="记录全文纳排决定",
+    )
+    fulltext_decide.add_argument("project_id")
+    fulltext_decide.add_argument("paper_id", type=int)
+    fulltext_decide.add_argument(
+        "status",
+        choices=["included", "excluded", "maybe"],
+    )
+    fulltext_decide.add_argument("--reason", default="")
+    fulltext_decide.add_argument("--reason-code", default="")
+    fulltext_decide.add_argument("--reviewer", default="human")
+    fulltext_resolve = fulltext_commands.add_parser(
+        "resolve",
+        help="仲裁全文纳排或主要排除理由分歧",
+    )
+    fulltext_resolve.add_argument("project_id")
+    fulltext_resolve.add_argument("paper_id", type=int)
+    fulltext_resolve.add_argument(
+        "status",
+        choices=["included", "excluded"],
+    )
+    fulltext_resolve.add_argument("--reason", required=True)
+    fulltext_resolve.add_argument("--reason-code", default="")
+    fulltext_resolve.add_argument("--reviewer", required=True)
 
     document = subparsers.add_parser("document", help="全文文档与检索")
     document_commands = document.add_subparsers(
@@ -679,7 +743,7 @@ def main(argv: list[str] | None = None) -> int:
                             f" / {value['summary']['total']}"
                         )
                         _print_screening(serializable["papers"])
-                else:
+                elif args.screen_command == "resolve":
                     value = workbench.resolve_screening(
                         args.project_id,
                         args.paper_id,
@@ -688,6 +752,79 @@ def main(argv: list[str] | None = None) -> int:
                         resolved_by=args.reviewer,
                     )
                     _print_json(value)
+                else:
+                    if args.fulltext_command == "configure":
+                        value = workbench.configure_fulltext_screening(
+                            args.project_id,
+                            enabled=not args.disable,
+                            blind=not args.open,
+                        )
+                        _print_json(value)
+                    elif args.fulltext_command == "status":
+                        value = workbench.fulltext_screening_workspace(
+                            args.project_id,
+                            reviewer=args.reviewer,
+                        )
+                        serializable = {
+                            **value,
+                            "papers": [
+                                {
+                                    **{
+                                        key: item
+                                        for key, item in paper.items()
+                                        if key != "paper"
+                                    },
+                                    "screening_status": paper["fulltext_status"],
+                                    "screening_reason": paper["fulltext_reason"],
+                                    "paper": paper["paper"].to_dict(),
+                                }
+                                for paper in value["papers"]
+                            ],
+                        }
+                        if args.json:
+                            _print_json(serializable)
+                        else:
+                            summary = value["summary"]
+                            print(
+                                "全文候选："
+                                f"{summary.get('total_candidates', 0)} "
+                                f"· 已获取 {summary.get('retrieved', 0)} "
+                                f"· 未获取 {summary.get('not_retrieved', 0)}"
+                            )
+                            _print_screening(serializable["papers"])
+                    elif args.fulltext_command == "retrieve":
+                        value = workbench.record_fulltext_retrieval(
+                            args.project_id,
+                            args.paper_id,
+                            status=args.status,
+                            reason=args.reason,
+                            updated_by=args.reviewer,
+                        )
+                        _print_json(value)
+                    elif args.fulltext_command == "decide":
+                        workbench.record_fulltext_screening_batch(
+                            project_id=args.project_id,
+                            decisions=[
+                                {
+                                    "paper_id": args.paper_id,
+                                    "status": args.status,
+                                    "reason": args.reason,
+                                    "exclusion_code": args.reason_code,
+                                    "reviewer": args.reviewer,
+                                }
+                            ],
+                        )
+                        print("已保存全文筛选决定。")
+                    else:
+                        value = workbench.resolve_fulltext_screening(
+                            args.project_id,
+                            args.paper_id,
+                            status=args.status,
+                            reason=args.reason,
+                            exclusion_code=args.reason_code,
+                            resolved_by=args.reviewer,
+                        )
+                        _print_json(value)
                 return 0
             if args.document_command == "add":
                 record = workbench.documents.ingest(

@@ -9,19 +9,37 @@ from .models import ResearchState
 
 
 def prisma_summary(state: ResearchState) -> dict[str, Any]:
-    decisions = state.screening
+    title_decisions = [
+        item
+        for item in state.screening
+        if str(item.get("stage", "title_abstract")) == "title_abstract"
+    ]
+    fulltext_decisions = [
+        item for item in state.screening if str(item.get("stage", "")) == "full_text"
+    ]
     counts = {"included": 0, "excluded": 0, "maybe": 0, "pending": 0}
     reasons: dict[str, int] = {}
-    for item in decisions:
+    for item in title_decisions:
         status = str(item.get("status", "pending"))
         counts[status] = counts.get(status, 0) + 1
         for reason in item.get("reasons", []):
             normalized = str(reason).strip()
             if normalized:
                 reasons[normalized] = reasons.get(normalized, 0) + 1
-    identified = len(decisions) or len(state.papers)
-    included = counts.get("included", 0) + counts.get("maybe", 0)
-    if not decisions:
+    identified = len(title_decisions) or len(state.papers)
+    title_candidates = counts.get("included", 0) + counts.get("maybe", 0)
+    included = title_candidates
+    fulltext_reasons: dict[str, int] = {}
+    if fulltext_decisions:
+        included = sum(
+            str(item.get("status")) == "included" for item in fulltext_decisions
+        )
+        for item in fulltext_decisions:
+            if str(item.get("status")) != "excluded":
+                continue
+            code = str(item.get("exclusion_code") or "other")
+            fulltext_reasons[code] = fulltext_reasons.get(code, 0) + 1
+    if not title_decisions:
         included = len(state.papers)
     return {
         "identified_records": identified,
@@ -31,8 +49,21 @@ def prisma_summary(state: ResearchState) -> dict[str, Any]:
         "pending_records": counts.get("pending", 0),
         "included_in_synthesis": included,
         "exclusion_reasons": reasons,
+        "reports_sought_for_retrieval": title_candidates,
+        "reports_not_retrieved": sum(
+            str(item.get("retrieval_status")) == "not_retrieved"
+            for item in fulltext_decisions
+        ),
+        "reports_assessed_for_eligibility": sum(
+            str(item.get("retrieval_status")) == "retrieved"
+            for item in fulltext_decisions
+        ),
+        "reports_excluded_after_fulltext": sum(
+            str(item.get("status")) == "excluded" for item in fulltext_decisions
+        ),
+        "fulltext_exclusion_reasons": fulltext_reasons,
         "note": (
-            "PRISMA-style operational counts generated from this run. "
+            "PRISMA 2020-style operational counts generated from this run. "
             "They are not a claim of PRISMA compliance."
         ),
     }

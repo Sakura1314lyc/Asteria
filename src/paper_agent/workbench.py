@@ -21,6 +21,7 @@ from .domain import (
     ScreeningStatus,
     new_id,
 )
+from .fulltext_screening import FullTextDecision
 from .llm import LanguageModel
 from .models import ResearchState
 from .profiles import get_profile
@@ -226,29 +227,79 @@ class ResearchWorkbench:
                 f"{gate['unresolved']} papers still need conflict resolution"
             )
         rows = self.database.list_project_papers(run["project_id"])
-        included_ids = {
-            row["evidence_id"]
-            for row in rows
-            if row["screening_status"]
-            in {
-                ScreeningStatus.INCLUDED,
-                ScreeningStatus.MAYBE,
+        fulltext_gate = self.database.fulltext_screening_gate(run["project_id"])
+        if fulltext_gate["blind"]:
+            raise WorkbenchError(
+                "Full-text blind screening must be opened before research can continue"
+            )
+        if fulltext_gate["awaiting_retrieval"]:
+            raise WorkbenchError(
+                f"{fulltext_gate['awaiting_retrieval']} reports still need "
+                "full-text retrieval"
+            )
+        if fulltext_gate["pending"]:
+            raise WorkbenchError(
+                f"{fulltext_gate['pending']} retrieved reports still need "
+                "a full-text decision"
+            )
+        if fulltext_gate["unresolved"]:
+            raise WorkbenchError(
+                f"{fulltext_gate['unresolved']} full-text decisions still "
+                "need resolution"
+            )
+        if fulltext_gate["enabled"]:
+            included_ids = {
+                row["evidence_id"]
+                for row in rows
+                if row["fulltext_status"] == ScreeningStatus.INCLUDED
             }
-        }
+        else:
+            included_ids = {
+                row["evidence_id"]
+                for row in rows
+                if row["screening_status"]
+                in {
+                    ScreeningStatus.INCLUDED,
+                    ScreeningStatus.MAYBE,
+                }
+            }
         state.papers = [
             paper for paper in state.papers if paper.paper_id in included_ids
         ]
         if not state.papers:
             raise WorkbenchError("No included papers remain after screening")
-        state.screening = [
+        title_screening = [
             {
                 "paper_id": row["evidence_id"],
+                "stage": "title_abstract",
                 "status": row["screening_status"],
                 "reasons": [row["screening_reason"]],
                 "reviewer": row["reviewer"],
             }
             for row in rows
         ]
+        fulltext_screening = (
+            [
+                {
+                    "paper_id": row["evidence_id"],
+                    "stage": "full_text",
+                    "retrieval_status": row["retrieval_status"],
+                    "status": row["fulltext_status"],
+                    "reasons": [row["fulltext_reason"]],
+                    "exclusion_code": row["fulltext_exclusion_code"],
+                    "reviewer": row["fulltext_reviewer"],
+                }
+                for row in rows
+                if row["screening_status"]
+                in {
+                    ScreeningStatus.INCLUDED,
+                    ScreeningStatus.MAYBE,
+                }
+            ]
+            if fulltext_gate["enabled"]
+            else []
+        )
+        state.screening = title_screening + fulltext_screening
         state.touch("screened")
         checkpoint(run_dir, state)
         project = self.database.require_project(run["project_id"])
@@ -389,6 +440,85 @@ class ResearchWorkbench:
             paper_id,
             status=status,
             reason=reason,
+            resolved_by=resolved_by,
+        )
+
+    def configure_fulltext_screening(
+        self,
+        project_id: str,
+        *,
+        enabled: bool,
+        blind: bool = True,
+    ) -> dict:
+        return self.database.configure_fulltext_screening(
+            project_id,
+            enabled=enabled,
+            blind=blind,
+        )
+
+    def record_fulltext_retrieval(
+        self,
+        project_id: str,
+        paper_id: int,
+        *,
+        status: str,
+        reason: str = "",
+        updated_by: str = "human",
+    ) -> dict:
+        return self.database.record_fulltext_retrieval(
+            project_id,
+            paper_id,
+            status=status,
+            reason=reason,
+            updated_by=updated_by,
+        )
+
+    def record_fulltext_screening_batch(
+        self,
+        *,
+        project_id: str,
+        decisions: list[dict],
+    ) -> None:
+        records = [
+            FullTextDecision(
+                project_id=project_id,
+                paper_id=int(decision["paper_id"]),
+                status=str(decision["status"]),
+                reason=str(decision.get("reason", "")),
+                exclusion_code=str(decision.get("exclusion_code", "")),
+                reviewer=str(decision.get("reviewer", "human")),
+            )
+            for decision in decisions
+        ]
+        self.database.record_fulltext_screening_batch(records)
+
+    def fulltext_screening_workspace(
+        self,
+        project_id: str,
+        *,
+        reviewer: str = "",
+    ) -> dict:
+        return self.database.fulltext_screening_workspace(
+            project_id,
+            reviewer_id=reviewer,
+        )
+
+    def resolve_fulltext_screening(
+        self,
+        project_id: str,
+        paper_id: int,
+        *,
+        status: str,
+        reason: str,
+        exclusion_code: str,
+        resolved_by: str,
+    ) -> dict:
+        return self.database.resolve_fulltext_screening(
+            project_id,
+            paper_id,
+            status=status,
+            reason=reason,
+            exclusion_code=exclusion_code,
             resolved_by=resolved_by,
         )
 

@@ -20,10 +20,17 @@ from .domain import (
     new_id,
     utc_now,
 )
+from .fulltext_screening import (
+    FULLTEXT_EXCLUSION_REASONS,
+    RETRIEVAL_STATUSES,
+    FullTextDecision,
+    evaluate_fulltext_consensus,
+    validate_fulltext_decision,
+)
 from .models import EvidenceCard, Paper
 from .screening import evaluate_consensus
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class DatabaseError(RuntimeError):
@@ -103,6 +110,14 @@ class Database:
                     tags_json TEXT NOT NULL DEFAULT '[]',
                     added_at TEXT NOT NULL,
                     decided_at TEXT NOT NULL DEFAULT '',
+                    retrieval_status TEXT NOT NULL DEFAULT 'not_requested',
+                    retrieval_reason TEXT NOT NULL DEFAULT '',
+                    retrieval_updated_at TEXT NOT NULL DEFAULT '',
+                    fulltext_status TEXT NOT NULL DEFAULT 'pending',
+                    fulltext_reason TEXT NOT NULL DEFAULT '',
+                    fulltext_exclusion_code TEXT NOT NULL DEFAULT '',
+                    fulltext_reviewer TEXT NOT NULL DEFAULT '',
+                    fulltext_decided_at TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (project_id, paper_id),
                     UNIQUE (project_id, evidence_id)
                 );
@@ -113,6 +128,8 @@ class Database:
                     mode TEXT NOT NULL DEFAULT 'single',
                     blind INTEGER NOT NULL DEFAULT 0,
                     reviewers_json TEXT NOT NULL DEFAULT '[]',
+                    fulltext_enabled INTEGER NOT NULL DEFAULT 0,
+                    fulltext_blind INTEGER NOT NULL DEFAULT 0,
                     updated_at TEXT NOT NULL
                 );
 
@@ -170,6 +187,82 @@ class Database:
                     ON screening_decision_events(project_id, paper_id, id);
                 CREATE INDEX IF NOT EXISTS idx_screening_resolution_events_project
                     ON screening_resolution_events(project_id, paper_id, id);
+
+                CREATE TABLE IF NOT EXISTS fulltext_screening_decisions (
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    reviewer_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    exclusion_code TEXT NOT NULL DEFAULT '',
+                    decided_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, paper_id, reviewer_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS fulltext_screening_decision_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    reviewer_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    exclusion_code TEXT NOT NULL DEFAULT '',
+                    decided_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS fulltext_screening_resolutions (
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    exclusion_code TEXT NOT NULL DEFAULT '',
+                    resolved_by TEXT NOT NULL,
+                    resolved_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, paper_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS fulltext_screening_resolution_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    exclusion_code TEXT NOT NULL DEFAULT '',
+                    resolved_by TEXT NOT NULL,
+                    resolved_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_fulltext_decisions_project
+                    ON fulltext_screening_decisions(
+                        project_id, reviewer_id, paper_id
+                    );
+                CREATE INDEX IF NOT EXISTS idx_fulltext_decision_events_project
+                    ON fulltext_screening_decision_events(
+                        project_id, paper_id, id
+                    );
+
+                CREATE TABLE IF NOT EXISTS fulltext_retrieval_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    paper_id INTEGER NOT NULL REFERENCES papers(id)
+                        ON DELETE CASCADE,
+                    status TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    updated_by TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_fulltext_retrieval_events_project
+                    ON fulltext_retrieval_events(project_id, paper_id, id);
 
                 CREATE TABLE IF NOT EXISTS evidence_cards (
                     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -285,6 +378,66 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_messages_conversation
                     ON messages(conversation_id, created_at);
                 """
+            )
+            _ensure_column(
+                db,
+                "project_papers",
+                "retrieval_status",
+                "TEXT NOT NULL DEFAULT 'not_requested'",
+            )
+            _ensure_column(
+                db,
+                "project_papers",
+                "retrieval_reason",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                db,
+                "project_papers",
+                "retrieval_updated_at",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                db,
+                "project_papers",
+                "fulltext_status",
+                "TEXT NOT NULL DEFAULT 'pending'",
+            )
+            _ensure_column(
+                db,
+                "project_papers",
+                "fulltext_reason",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                db,
+                "project_papers",
+                "fulltext_exclusion_code",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                db,
+                "project_papers",
+                "fulltext_reviewer",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                db,
+                "project_papers",
+                "fulltext_decided_at",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                db,
+                "screening_configs",
+                "fulltext_enabled",
+                "INTEGER NOT NULL DEFAULT 0",
+            )
+            _ensure_column(
+                db,
+                "screening_configs",
+                "fulltext_blind",
+                "INTEGER NOT NULL DEFAULT 0",
             )
             row = db.execute("SELECT version FROM schema_meta LIMIT 1").fetchone()
             if row is None:
@@ -666,7 +819,11 @@ class Database:
     ) -> list[dict[str, Any]]:
         query = """
             SELECT p.*, pp.evidence_id, pp.screening_status,
-                   pp.screening_reason, pp.reviewer, pp.tags_json, pp.decided_at
+                   pp.screening_reason, pp.reviewer, pp.tags_json, pp.decided_at,
+                   pp.retrieval_status, pp.retrieval_reason,
+                   pp.retrieval_updated_at, pp.fulltext_status,
+                   pp.fulltext_reason, pp.fulltext_exclusion_code,
+                   pp.fulltext_reviewer, pp.fulltext_decided_at
             FROM project_papers pp
             JOIN papers p ON p.id = pp.paper_id
             WHERE pp.project_id = ?
@@ -745,6 +902,16 @@ class Database:
                     (project_id,),
                 ).fetchone()["amount"]
             )
+            title_config_changed = (
+                current["mode"] != normalized_mode
+                or current["reviewers"] != normalized_reviewers
+                or current["blind"] != blind
+            )
+            if current["fulltext_enabled"] and title_config_changed:
+                raise DatabaseError(
+                    "Title/abstract screening configuration is locked after "
+                    "full-text review starts"
+                )
 
             if (
                 current["mode"] == "dual"
@@ -826,8 +993,9 @@ class Database:
             db.execute(
                 """
                 INSERT INTO screening_configs(
-                    project_id, mode, blind, reviewers_json, updated_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    project_id, mode, blind, reviewers_json,
+                    fulltext_enabled, fulltext_blind, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(project_id) DO UPDATE SET
                     mode = excluded.mode,
                     blind = excluded.blind,
@@ -839,6 +1007,8 @@ class Database:
                     normalized_mode,
                     int(blind),
                     _json(normalized_reviewers),
+                    int(current["fulltext_enabled"]),
+                    int(current["fulltext_blind"]),
                     now,
                 ),
             )
@@ -861,6 +1031,11 @@ class Database:
                         project_id,
                         paper_row["paper_id"],
                         normalized_reviewers,
+                    )
+                    _invalidate_fulltext_current_if_not_title_candidate(
+                        db,
+                        project_id,
+                        paper_row["paper_id"],
                     )
             if has_config is None or enabling_dual:
                 db.execute(
@@ -891,7 +1066,11 @@ class Database:
                 """
                 SELECT p.*, pp.evidence_id, pp.screening_status,
                        pp.screening_reason, pp.reviewer, pp.tags_json,
-                       pp.decided_at
+                       pp.decided_at, pp.retrieval_status,
+                       pp.retrieval_reason, pp.retrieval_updated_at,
+                       pp.fulltext_status, pp.fulltext_reason,
+                       pp.fulltext_exclusion_code, pp.fulltext_reviewer,
+                       pp.fulltext_decided_at
                 FROM project_papers pp
                 JOIN papers p ON p.id = pp.paper_id
                 WHERE pp.project_id = ?
@@ -1081,6 +1260,11 @@ class Database:
                     paper_id,
                 ),
             )
+            _invalidate_fulltext_current_if_not_title_candidate(
+                db,
+                project_id,
+                paper_id,
+            )
             return {
                 "paper_id": paper_id,
                 "status": status,
@@ -1113,6 +1297,580 @@ class Database:
             "pending": summary["pending"],
             "unresolved": unresolved,
             "blind": False,
+        }
+
+    def configure_fulltext_screening(
+        self,
+        project_id: str,
+        *,
+        enabled: bool,
+        blind: bool = True,
+    ) -> dict[str, Any]:
+        title_gate = self.screening_gate(project_id)
+        if enabled and not title_gate["ready"]:
+            raise DatabaseError(
+                "Title/abstract screening must be complete before full-text review"
+            )
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not _project_exists(db, project_id):
+                raise DatabaseError("Project not found")
+            config = _screening_config(db, project_id)
+            if config["mode"] == "single":
+                blind = False
+            activity = int(
+                db.execute(
+                    """
+                    SELECT
+                        (SELECT COUNT(*) FROM fulltext_screening_decisions
+                         WHERE project_id = ?) +
+                        (SELECT COUNT(*) FROM project_papers
+                         WHERE project_id = ?
+                           AND retrieval_status != 'not_requested') AS amount
+                    """,
+                    (project_id, project_id),
+                ).fetchone()["amount"]
+            )
+            if config["fulltext_enabled"] and not enabled and activity:
+                raise DatabaseError(
+                    "Full-text screening cannot be disabled after work has started"
+                )
+            if (
+                config["fulltext_enabled"]
+                and not config["fulltext_blind"]
+                and blind
+                and activity
+            ):
+                raise DatabaseError(
+                    "Full-text blind review cannot be restored after opening"
+                )
+            opening = (
+                config["fulltext_enabled"]
+                and config["fulltext_blind"]
+                and enabled
+                and not blind
+            )
+            if opening and not _fulltext_blind_review_complete(
+                db,
+                project_id,
+                config,
+            ):
+                raise DatabaseError(
+                    "Full-text review can only be opened after retrieval and "
+                    "both reviewers finish"
+                )
+            now = utc_now()
+            db.execute(
+                """
+                INSERT INTO screening_configs(
+                    project_id, mode, blind, reviewers_json,
+                    fulltext_enabled, fulltext_blind, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id) DO UPDATE SET
+                    fulltext_enabled = excluded.fulltext_enabled,
+                    fulltext_blind = excluded.fulltext_blind,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    project_id,
+                    config["mode"],
+                    int(config["blind"]),
+                    _json(config["reviewers"]),
+                    int(enabled),
+                    int(blind),
+                    now,
+                ),
+            )
+            if opening:
+                rows = db.execute(
+                    """
+                    SELECT paper_id FROM project_papers
+                    WHERE project_id = ?
+                      AND screening_status IN ('included', 'maybe')
+                      AND retrieval_status = 'retrieved'
+                    """,
+                    (project_id,),
+                ).fetchall()
+                for row in rows:
+                    _recompute_fulltext_screening(
+                        db,
+                        project_id,
+                        row["paper_id"],
+                        config["reviewers"],
+                    )
+            return _screening_config(db, project_id)
+
+    def record_fulltext_retrieval(
+        self,
+        project_id: str,
+        paper_id: int,
+        *,
+        status: str,
+        reason: str = "",
+        updated_by: str = "human",
+    ) -> dict[str, Any]:
+        normalized_status = status.strip().lower()
+        normalized_reason = reason.strip()
+        if normalized_status not in RETRIEVAL_STATUSES:
+            raise ValueError("Invalid full-text retrieval status")
+        if normalized_status == "not_retrieved" and not normalized_reason:
+            raise ValueError("A reason is required when full text was not retrieved")
+        if not updated_by.strip():
+            raise ValueError("Retrieval updater is required")
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            config = _screening_config(db, project_id)
+            if not config["fulltext_enabled"]:
+                raise DatabaseError("Full-text screening is not enabled")
+            row = db.execute(
+                """
+                SELECT screening_status FROM project_papers
+                WHERE project_id = ? AND paper_id = ?
+                """,
+                (project_id, paper_id),
+            ).fetchone()
+            if row is None:
+                raise DatabaseError("Paper is not attached to this project")
+            if row["screening_status"] not in {
+                ScreeningStatus.INCLUDED,
+                ScreeningStatus.MAYBE,
+            }:
+                raise DatabaseError(
+                    "Only title/abstract candidates can enter full-text retrieval"
+                )
+            if normalized_status == "retrieved":
+                document = db.execute(
+                    """
+                    SELECT 1 FROM documents
+                    WHERE project_id = ? AND paper_id = ?
+                    """,
+                    (project_id, paper_id),
+                ).fetchone()
+                if document is None:
+                    raise DatabaseError(
+                        "Attach a full-text document before marking it retrieved"
+                    )
+            now = utc_now()
+            db.execute(
+                """
+                UPDATE project_papers
+                SET retrieval_status = ?, retrieval_reason = ?,
+                    retrieval_updated_at = ?
+                WHERE project_id = ? AND paper_id = ?
+                """,
+                (
+                    normalized_status,
+                    normalized_reason,
+                    now,
+                    project_id,
+                    paper_id,
+                ),
+            )
+            db.execute(
+                """
+                INSERT INTO fulltext_retrieval_events(
+                    project_id, paper_id, status, reason, updated_by, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    project_id,
+                    paper_id,
+                    normalized_status,
+                    normalized_reason,
+                    updated_by.strip(),
+                    now,
+                ),
+            )
+            if normalized_status != "retrieved":
+                db.execute(
+                    """
+                    DELETE FROM fulltext_screening_decisions
+                    WHERE project_id = ? AND paper_id = ?
+                    """,
+                    (project_id, paper_id),
+                )
+                db.execute(
+                    """
+                    DELETE FROM fulltext_screening_resolutions
+                    WHERE project_id = ? AND paper_id = ?
+                    """,
+                    (project_id, paper_id),
+                )
+                _reset_fulltext_result(db, project_id, paper_id)
+            return {
+                "paper_id": paper_id,
+                "status": normalized_status,
+                "reason": normalized_reason,
+                "updated_by": updated_by.strip(),
+                "updated_at": now,
+            }
+
+    def record_fulltext_screening(self, decision: FullTextDecision) -> None:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            _record_fulltext_transaction(db, decision)
+
+    def record_fulltext_screening_batch(
+        self,
+        decisions: list[FullTextDecision],
+    ) -> None:
+        if not decisions:
+            raise ValueError("At least one full-text decision is required")
+        if len({decision.project_id for decision in decisions}) != 1:
+            raise ValueError("A full-text batch must belong to one project")
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            for decision in decisions:
+                _record_fulltext_transaction(db, decision)
+
+    def fulltext_screening_workspace(
+        self,
+        project_id: str,
+        *,
+        reviewer_id: str = "",
+    ) -> dict[str, Any]:
+        config = self.get_screening_config(project_id)
+        if (
+            config["mode"] == "dual"
+            and reviewer_id
+            and reviewer_id not in config["reviewers"]
+        ):
+            raise DatabaseError(
+                f"Reviewer must be one of: {', '.join(config['reviewers'])}"
+            )
+        papers = [
+            paper
+            for paper in self.list_project_papers(project_id)
+            if paper["screening_status"]
+            in {ScreeningStatus.INCLUDED, ScreeningStatus.MAYBE}
+        ]
+        with self.connection() as db:
+            decisions = db.execute(
+                """
+                SELECT paper_id, reviewer_id, status, reason,
+                       exclusion_code, decided_at
+                FROM fulltext_screening_decisions
+                WHERE project_id = ?
+                ORDER BY paper_id, reviewer_id
+                """,
+                (project_id,),
+            ).fetchall()
+            resolutions = db.execute(
+                """
+                SELECT paper_id, status, reason, exclusion_code,
+                       resolved_by, resolved_at
+                FROM fulltext_screening_resolutions
+                WHERE project_id = ?
+                """,
+                (project_id,),
+            ).fetchall()
+            documents = db.execute(
+                """
+                SELECT id, paper_id, filename, page_count
+                FROM documents
+                WHERE project_id = ? AND paper_id IS NOT NULL
+                ORDER BY created_at DESC
+                """,
+                (project_id,),
+            ).fetchall()
+        decision_map: dict[int, dict[str, dict[str, str]]] = {}
+        for row in decisions:
+            decision_map.setdefault(row["paper_id"], {})[row["reviewer_id"]] = {
+                "reviewer_id": row["reviewer_id"],
+                "status": row["status"],
+                "reason": row["reason"],
+                "exclusion_code": row["exclusion_code"],
+                "decided_at": row["decided_at"],
+            }
+        resolution_map = {
+            row["paper_id"]: {
+                "status": row["status"],
+                "reason": row["reason"],
+                "exclusion_code": row["exclusion_code"],
+                "resolved_by": row["resolved_by"],
+                "resolved_at": row["resolved_at"],
+            }
+            for row in resolutions
+        }
+        document_map: dict[int, list[dict[str, Any]]] = {}
+        for row in documents:
+            document_map.setdefault(row["paper_id"], []).append(dict(row))
+
+        summary = {
+            "total_candidates": len(papers),
+            "not_requested": 0,
+            "sought": 0,
+            "retrieved": 0,
+            "not_retrieved": 0,
+            "pending": 0,
+            "agreed": 0,
+            "conflict": 0,
+            "awaiting_resolution": 0,
+            "resolved": 0,
+            "reviewer_completed": 0,
+        }
+        for paper in papers:
+            retrieval = paper["retrieval_status"]
+            summary[retrieval] += 1
+            paper["documents"] = document_map.get(paper["id"], [])
+            paper_decisions = decision_map.get(paper["id"], {})
+            resolution = resolution_map.get(paper["id"])
+            if reviewer_id in paper_decisions:
+                summary["reviewer_completed"] += 1
+            if retrieval == "not_retrieved":
+                state = "not_retrieved"
+            elif retrieval != "retrieved":
+                state = "awaiting_retrieval"
+            elif config["mode"] == "dual":
+                consensus = evaluate_fulltext_consensus(
+                    {
+                        reviewer: (
+                            item["status"],
+                            item["exclusion_code"],
+                        )
+                        for reviewer, item in paper_decisions.items()
+                    },
+                    config["reviewers"],
+                )
+                state = "resolved" if resolution else consensus.state
+                summary[state] += 1
+            else:
+                state = (
+                    "pending"
+                    if paper["fulltext_status"]
+                    in {ScreeningStatus.PENDING, ScreeningStatus.MAYBE}
+                    else "agreed"
+                )
+                summary[state] += 1
+
+            if config["mode"] == "dual" and config["fulltext_blind"]:
+                own = paper_decisions.get(reviewer_id) if reviewer_id else None
+                paper["fulltext_status"] = (
+                    own["status"] if own else ScreeningStatus.PENDING
+                )
+                paper["fulltext_reason"] = own["reason"] if own else ""
+                paper["fulltext_exclusion_code"] = own["exclusion_code"] if own else ""
+                paper["fulltext_reviewer"] = reviewer_id
+                paper["fulltext_decided_at"] = own["decided_at"] if own else ""
+                paper["my_decision"] = own
+                paper["decisions"] = []
+                paper["resolution"] = None
+                paper["consensus_state"] = (
+                    state
+                    if state in {"awaiting_retrieval", "not_retrieved"}
+                    else "blinded"
+                )
+            else:
+                paper["my_decision"] = paper_decisions.get(reviewer_id)
+                paper["decisions"] = list(paper_decisions.values())
+                paper["resolution"] = resolution
+                paper["consensus_state"] = state
+        if config["mode"] == "dual" and config["fulltext_blind"]:
+            summary = {
+                key: summary[key]
+                for key in (
+                    "total_candidates",
+                    "not_requested",
+                    "sought",
+                    "retrieved",
+                    "not_retrieved",
+                    "reviewer_completed",
+                )
+            }
+        return {
+            "config": config,
+            "exclusion_reasons": FULLTEXT_EXCLUSION_REASONS,
+            "summary": summary,
+            "papers": papers,
+        }
+
+    def resolve_fulltext_screening(
+        self,
+        project_id: str,
+        paper_id: int,
+        *,
+        status: str,
+        reason: str,
+        exclusion_code: str,
+        resolved_by: str,
+    ) -> dict[str, Any]:
+        normalized_status, normalized_reason, normalized_code = (
+            validate_fulltext_decision(status, reason, exclusion_code)
+        )
+        if normalized_status == ScreeningStatus.MAYBE:
+            raise ValueError("A full-text resolution must be included or excluded")
+        if not resolved_by.strip():
+            raise ValueError("Resolver is required")
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            config = _screening_config(db, project_id)
+            if not config["fulltext_enabled"] or config["mode"] != "dual":
+                raise DatabaseError(
+                    "Full-text resolution requires enabled dual screening"
+                )
+            if config["fulltext_blind"]:
+                raise DatabaseError("Open full-text blind review before resolving")
+            row = db.execute(
+                """
+                SELECT retrieval_status FROM project_papers
+                WHERE project_id = ? AND paper_id = ?
+                """,
+                (project_id, paper_id),
+            ).fetchone()
+            if row is None or row["retrieval_status"] != "retrieved":
+                raise DatabaseError("A retrieved full text is required")
+            completed = {
+                item["reviewer_id"]
+                for item in db.execute(
+                    """
+                    SELECT reviewer_id FROM fulltext_screening_decisions
+                    WHERE project_id = ? AND paper_id = ?
+                    """,
+                    (project_id, paper_id),
+                ).fetchall()
+            }
+            if not set(config["reviewers"]).issubset(completed):
+                raise DatabaseError("Both reviewers must decide before resolution")
+            now = utc_now()
+            values = (
+                project_id,
+                paper_id,
+                normalized_status,
+                normalized_reason,
+                normalized_code,
+                resolved_by.strip(),
+                now,
+            )
+            db.execute(
+                """
+                INSERT INTO fulltext_screening_resolutions(
+                    project_id, paper_id, status, reason, exclusion_code,
+                    resolved_by, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(project_id, paper_id) DO UPDATE SET
+                    status = excluded.status,
+                    reason = excluded.reason,
+                    exclusion_code = excluded.exclusion_code,
+                    resolved_by = excluded.resolved_by,
+                    resolved_at = excluded.resolved_at
+                """,
+                values,
+            )
+            db.execute(
+                """
+                INSERT INTO fulltext_screening_resolution_events(
+                    project_id, paper_id, status, reason, exclusion_code,
+                    resolved_by, resolved_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
+            _set_fulltext_result(
+                db,
+                project_id,
+                paper_id,
+                status=normalized_status,
+                reason=normalized_reason,
+                exclusion_code=normalized_code,
+                reviewer=resolved_by.strip(),
+                decided_at=now,
+            )
+            return {
+                "paper_id": paper_id,
+                "status": normalized_status,
+                "reason": normalized_reason,
+                "exclusion_code": normalized_code,
+                "resolved_by": resolved_by.strip(),
+                "resolved_at": now,
+            }
+
+    def fulltext_screening_gate(self, project_id: str) -> dict[str, Any]:
+        config = self.get_screening_config(project_id)
+        if not config["fulltext_enabled"]:
+            return {
+                "enabled": False,
+                "ready": True,
+                "blind": False,
+                "awaiting_retrieval": 0,
+                "pending": 0,
+                "unresolved": 0,
+            }
+        workspace = self.fulltext_screening_workspace(project_id)
+        summary = workspace["summary"]
+        awaiting_retrieval = summary["not_requested"] + summary["sought"]
+        if config["mode"] == "dual" and config["fulltext_blind"]:
+            return {
+                "enabled": True,
+                "ready": False,
+                "blind": True,
+                "awaiting_retrieval": awaiting_retrieval,
+                "pending": 0,
+                "unresolved": 0,
+            }
+        unresolved = summary["conflict"] + summary["awaiting_resolution"]
+        return {
+            "enabled": True,
+            "ready": (
+                awaiting_retrieval == 0 and summary["pending"] == 0 and unresolved == 0
+            ),
+            "blind": False,
+            "awaiting_retrieval": awaiting_retrieval,
+            "pending": summary["pending"],
+            "unresolved": unresolved,
+        }
+
+    def prisma_flow(self, project_id: str) -> dict[str, Any]:
+        config = self.get_screening_config(project_id)
+        rows = self.list_project_papers(project_id)
+        title_candidates = [
+            row
+            for row in rows
+            if row["screening_status"]
+            in {ScreeningStatus.INCLUDED, ScreeningStatus.MAYBE}
+        ]
+        reason_counts: dict[str, int] = {}
+        for row in title_candidates:
+            if row["fulltext_status"] != ScreeningStatus.EXCLUDED:
+                continue
+            code = row["fulltext_exclusion_code"] or "other"
+            reason_counts[code] = reason_counts.get(code, 0) + 1
+        if config["fulltext_enabled"]:
+            included = sum(
+                row["fulltext_status"] == ScreeningStatus.INCLUDED
+                for row in title_candidates
+            )
+        else:
+            included = len(title_candidates)
+        return {
+            "identified_records": len(rows),
+            "records_screened": len(rows),
+            "records_excluded": sum(
+                row["screening_status"] == ScreeningStatus.EXCLUDED for row in rows
+            ),
+            "reports_sought_for_retrieval": len(title_candidates),
+            "reports_not_retrieved": sum(
+                row["retrieval_status"] == "not_retrieved" for row in title_candidates
+            ),
+            "reports_awaiting_retrieval": sum(
+                row["retrieval_status"] in {"not_requested", "sought"}
+                for row in title_candidates
+            ),
+            "reports_assessed_for_eligibility": sum(
+                row["retrieval_status"] == "retrieved"
+                and row["fulltext_status"] != ScreeningStatus.PENDING
+                for row in title_candidates
+            ),
+            "reports_excluded_after_fulltext": sum(
+                row["fulltext_status"] == ScreeningStatus.EXCLUDED
+                for row in title_candidates
+            ),
+            "fulltext_exclusion_reasons": reason_counts,
+            "studies_included_in_synthesis": included,
+            "fulltext_screening_enabled": config["fulltext_enabled"],
+            "note": (
+                "Operational PRISMA 2020 fields. Reports and studies are not "
+                "deduplicated separately, so this is not a compliance claim."
+            ),
         }
 
     def screening_audit(self, project_id: str) -> dict[str, Any]:
@@ -1170,6 +1928,70 @@ class Database:
                     (project_id,),
                 ).fetchall()
             ]
+            fulltext_decisions = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT paper_id, reviewer_id, status, reason,
+                           exclusion_code, decided_at
+                    FROM fulltext_screening_decisions
+                    WHERE project_id = ?
+                    ORDER BY paper_id, reviewer_id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+            fulltext_decision_events = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT id, paper_id, reviewer_id, status, reason,
+                           exclusion_code, decided_at
+                    FROM fulltext_screening_decision_events
+                    WHERE project_id = ?
+                    ORDER BY id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+            fulltext_resolutions = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT paper_id, status, reason, exclusion_code,
+                           resolved_by, resolved_at
+                    FROM fulltext_screening_resolutions
+                    WHERE project_id = ?
+                    ORDER BY paper_id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+            fulltext_resolution_events = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT id, paper_id, status, reason, exclusion_code,
+                           resolved_by, resolved_at
+                    FROM fulltext_screening_resolution_events
+                    WHERE project_id = ?
+                    ORDER BY id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
+            retrieval_events = [
+                dict(row)
+                for row in db.execute(
+                    """
+                    SELECT id, paper_id, status, reason, updated_by, updated_at
+                    FROM fulltext_retrieval_events
+                    WHERE project_id = ?
+                    ORDER BY id
+                    """,
+                    (project_id,),
+                ).fetchall()
+            ]
         return {
             "config": config,
             "decisions": decisions,
@@ -1177,6 +1999,15 @@ class Database:
             "resolutions": resolutions,
             "resolution_events": resolution_events,
             "gate": self.screening_gate(project_id),
+            "fulltext": {
+                "decisions": fulltext_decisions,
+                "decision_events": fulltext_decision_events,
+                "resolutions": fulltext_resolutions,
+                "resolution_events": fulltext_resolution_events,
+                "retrieval_events": retrieval_events,
+                "gate": self.fulltext_screening_gate(project_id),
+            },
+            "prisma_flow": self.prisma_flow(project_id),
         }
 
     def save_evidence(
@@ -1351,6 +2182,12 @@ class Database:
         chunks: list[tuple[int, int, str]],
     ) -> None:
         with self.connection() as db:
+            if document.paper_id is not None and not _paper_is_attached(
+                db,
+                document.project_id,
+                document.paper_id,
+            ):
+                raise DatabaseError("Document paper is not attached to this project")
             db.execute(
                 """
                 INSERT INTO documents(
@@ -1388,6 +2225,48 @@ class Database:
                     """,
                     (content, document.id, page, cursor.lastrowid),
                 )
+            if document.paper_id is not None:
+                _mark_document_retrieved(
+                    db,
+                    document.project_id,
+                    document.paper_id,
+                    updated_at=document.created_at,
+                )
+
+    def link_document_to_paper(
+        self,
+        project_id: str,
+        document_id: str,
+        paper_id: int,
+    ) -> None:
+        with self.connection() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not _paper_is_attached(db, project_id, paper_id):
+                raise DatabaseError("Paper is not attached to this project")
+            row = db.execute(
+                """
+                SELECT paper_id FROM documents
+                WHERE project_id = ? AND id = ?
+                """,
+                (project_id, document_id),
+            ).fetchone()
+            if row is None:
+                raise DatabaseError("Document not found")
+            if row["paper_id"] not in {None, paper_id}:
+                raise DatabaseError("Document is already linked to another paper")
+            db.execute(
+                """
+                UPDATE documents SET paper_id = ?
+                WHERE project_id = ? AND id = ?
+                """,
+                (paper_id, project_id, document_id),
+            )
+            _mark_document_retrieved(
+                db,
+                project_id,
+                paper_id,
+                updated_at=utc_now(),
+            )
 
     def get_document_by_hash(
         self,
@@ -1763,7 +2642,8 @@ def _screening_config(
 ) -> dict[str, Any]:
     row = db.execute(
         """
-        SELECT mode, blind, reviewers_json, updated_at
+        SELECT mode, blind, reviewers_json, fulltext_enabled,
+               fulltext_blind, updated_at
         FROM screening_configs
         WHERE project_id = ?
         """,
@@ -1774,14 +2654,31 @@ def _screening_config(
             "mode": "single",
             "blind": False,
             "reviewers": [],
+            "fulltext_enabled": False,
+            "fulltext_blind": False,
             "updated_at": "",
         }
     return {
         "mode": row["mode"],
         "blind": bool(row["blind"]),
         "reviewers": _loads(row["reviewers_json"], []),
+        "fulltext_enabled": bool(row["fulltext_enabled"]),
+        "fulltext_blind": bool(row["fulltext_blind"]),
         "updated_at": row["updated_at"],
     }
+
+
+def _ensure_column(
+    db: sqlite3.Connection,
+    table: str,
+    column: str,
+    definition: str,
+) -> None:
+    existing = {
+        row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if column not in existing:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def _save_screening_decision(
@@ -1885,6 +2782,355 @@ def _record_screening_transaction(
                 decision.paper_id,
             ),
         )
+    _invalidate_fulltext_current_if_not_title_candidate(
+        db,
+        decision.project_id,
+        decision.paper_id,
+    )
+
+
+def _invalidate_fulltext_current_if_not_title_candidate(
+    db: sqlite3.Connection,
+    project_id: str,
+    paper_id: int,
+) -> None:
+    row = db.execute(
+        """
+        SELECT screening_status FROM project_papers
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (project_id, paper_id),
+    ).fetchone()
+    if row is None or row["screening_status"] in {
+        ScreeningStatus.INCLUDED,
+        ScreeningStatus.MAYBE,
+    }:
+        return
+    db.execute(
+        """
+        DELETE FROM fulltext_screening_decisions
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (project_id, paper_id),
+    )
+    db.execute(
+        """
+        DELETE FROM fulltext_screening_resolutions
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (project_id, paper_id),
+    )
+    db.execute(
+        """
+        UPDATE project_papers
+        SET fulltext_status = ?, fulltext_reason = '',
+            fulltext_exclusion_code = '', fulltext_reviewer = '',
+            fulltext_decided_at = ''
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (ScreeningStatus.PENDING, project_id, paper_id),
+    )
+
+
+def _save_fulltext_decision(
+    db: sqlite3.Connection,
+    decision: FullTextDecision,
+) -> None:
+    decided_at = decision.decided_at or utc_now()
+    values = (
+        decision.project_id,
+        decision.paper_id,
+        decision.reviewer,
+        decision.status,
+        decision.reason,
+        decision.exclusion_code,
+        decided_at,
+    )
+    db.execute(
+        """
+        INSERT INTO fulltext_screening_decisions(
+            project_id, paper_id, reviewer_id, status, reason,
+            exclusion_code, decided_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(project_id, paper_id, reviewer_id) DO UPDATE SET
+            status = excluded.status,
+            reason = excluded.reason,
+            exclusion_code = excluded.exclusion_code,
+            decided_at = excluded.decided_at
+        """,
+        values,
+    )
+    db.execute(
+        """
+        INSERT INTO fulltext_screening_decision_events(
+            project_id, paper_id, reviewer_id, status, reason,
+            exclusion_code, decided_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        values,
+    )
+
+
+def _record_fulltext_transaction(
+    db: sqlite3.Connection,
+    decision: FullTextDecision,
+) -> None:
+    status, reason, exclusion_code = validate_fulltext_decision(
+        decision.status,
+        decision.reason,
+        decision.exclusion_code,
+    )
+    if not decision.reviewer.strip():
+        raise ValueError("Full-text reviewer is required")
+    row = db.execute(
+        """
+        SELECT screening_status, retrieval_status
+        FROM project_papers
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (decision.project_id, decision.paper_id),
+    ).fetchone()
+    if row is None:
+        raise DatabaseError("Paper is not attached to this project")
+    if row["screening_status"] not in {
+        ScreeningStatus.INCLUDED,
+        ScreeningStatus.MAYBE,
+    }:
+        raise DatabaseError("Paper did not pass title/abstract screening")
+    if row["retrieval_status"] != "retrieved":
+        raise DatabaseError("Full text must be retrieved before eligibility review")
+    config = _screening_config(db, decision.project_id)
+    if not config["fulltext_enabled"]:
+        raise DatabaseError("Full-text screening is not enabled")
+    if config["mode"] == "dual" and decision.reviewer not in config["reviewers"]:
+        raise DatabaseError(
+            f"Reviewer must be one of: {', '.join(config['reviewers'])}"
+        )
+    normalized = FullTextDecision(
+        project_id=decision.project_id,
+        paper_id=decision.paper_id,
+        status=status,
+        reason=reason,
+        exclusion_code=exclusion_code,
+        reviewer=decision.reviewer.strip(),
+        decided_at=decision.decided_at or utc_now(),
+    )
+    if config["mode"] == "single":
+        db.execute(
+            """
+            DELETE FROM fulltext_screening_decisions
+            WHERE project_id = ? AND paper_id = ?
+            """,
+            (decision.project_id, decision.paper_id),
+        )
+    _save_fulltext_decision(db, normalized)
+    db.execute(
+        """
+        DELETE FROM fulltext_screening_resolutions
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (decision.project_id, decision.paper_id),
+    )
+    if config["mode"] == "dual":
+        if config["fulltext_blind"]:
+            _reset_fulltext_result(db, decision.project_id, decision.paper_id)
+        else:
+            _recompute_fulltext_screening(
+                db,
+                decision.project_id,
+                decision.paper_id,
+                config["reviewers"],
+            )
+    else:
+        _set_fulltext_result(
+            db,
+            decision.project_id,
+            decision.paper_id,
+            status=status,
+            reason=reason,
+            exclusion_code=exclusion_code,
+            reviewer=normalized.reviewer,
+            decided_at=normalized.decided_at,
+        )
+
+
+def _recompute_fulltext_screening(
+    db: sqlite3.Connection,
+    project_id: str,
+    paper_id: int,
+    reviewers: list[str],
+) -> None:
+    rows = db.execute(
+        """
+        SELECT reviewer_id, status, reason, exclusion_code, decided_at
+        FROM fulltext_screening_decisions
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (project_id, paper_id),
+    ).fetchall()
+    decisions = {row["reviewer_id"]: row for row in rows}
+    consensus = evaluate_fulltext_consensus(
+        {
+            reviewer: (
+                decisions[reviewer]["status"],
+                decisions[reviewer]["exclusion_code"],
+            )
+            for reviewer in reviewers
+            if reviewer in decisions
+        },
+        reviewers,
+    )
+    reasons = list(
+        dict.fromkeys(
+            decisions[reviewer]["reason"].strip()
+            for reviewer in reviewers
+            if reviewer in decisions and decisions[reviewer]["reason"].strip()
+        )
+    )
+    decided_at = ""
+    if consensus.complete:
+        decided_at = max(
+            decisions[reviewer]["decided_at"]
+            for reviewer in reviewers
+            if reviewer in decisions
+        )
+    _set_fulltext_result(
+        db,
+        project_id,
+        paper_id,
+        status=consensus.status,
+        reason=" | ".join(reasons) if consensus.complete else "",
+        exclusion_code=consensus.exclusion_code,
+        reviewer="dual-consensus" if consensus.complete else "",
+        decided_at=decided_at,
+    )
+
+
+def _set_fulltext_result(
+    db: sqlite3.Connection,
+    project_id: str,
+    paper_id: int,
+    *,
+    status: str,
+    reason: str,
+    exclusion_code: str,
+    reviewer: str,
+    decided_at: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE project_papers
+        SET fulltext_status = ?, fulltext_reason = ?,
+            fulltext_exclusion_code = ?, fulltext_reviewer = ?,
+            fulltext_decided_at = ?
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (
+            status,
+            reason,
+            exclusion_code,
+            reviewer,
+            decided_at,
+            project_id,
+            paper_id,
+        ),
+    )
+
+
+def _reset_fulltext_result(
+    db: sqlite3.Connection,
+    project_id: str,
+    paper_id: int,
+) -> None:
+    _set_fulltext_result(
+        db,
+        project_id,
+        paper_id,
+        status=ScreeningStatus.PENDING,
+        reason="",
+        exclusion_code="",
+        reviewer="",
+        decided_at="",
+    )
+
+
+def _fulltext_blind_review_complete(
+    db: sqlite3.Connection,
+    project_id: str,
+    config: dict[str, Any],
+) -> bool:
+    rows = db.execute(
+        """
+        SELECT paper_id, retrieval_status
+        FROM project_papers
+        WHERE project_id = ?
+          AND screening_status IN ('included', 'maybe')
+        """,
+        (project_id,),
+    ).fetchall()
+    if any(row["retrieval_status"] in {"not_requested", "sought"} for row in rows):
+        return False
+    retrieved_ids = {
+        row["paper_id"] for row in rows if row["retrieval_status"] == "retrieved"
+    }
+    if not retrieved_ids:
+        return True
+    completed = db.execute(
+        """
+        SELECT paper_id, reviewer_id
+        FROM fulltext_screening_decisions
+        WHERE project_id = ?
+        """,
+        (project_id,),
+    ).fetchall()
+    completed_pairs = {(row["paper_id"], row["reviewer_id"]) for row in completed}
+    return all(
+        (paper_id, reviewer) in completed_pairs
+        for paper_id in retrieved_ids
+        for reviewer in config["reviewers"]
+    )
+
+
+def _mark_document_retrieved(
+    db: sqlite3.Connection,
+    project_id: str,
+    paper_id: int,
+    *,
+    updated_at: str,
+) -> None:
+    row = db.execute(
+        """
+        SELECT screening_status, retrieval_status
+        FROM project_papers
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (project_id, paper_id),
+    ).fetchone()
+    if row is None:
+        raise DatabaseError("Paper is not attached to this project")
+    if row["screening_status"] not in {
+        ScreeningStatus.INCLUDED,
+        ScreeningStatus.MAYBE,
+    }:
+        return
+    db.execute(
+        """
+        UPDATE project_papers
+        SET retrieval_status = 'retrieved', retrieval_reason = '',
+            retrieval_updated_at = ?
+        WHERE project_id = ? AND paper_id = ?
+        """,
+        (updated_at, project_id, paper_id),
+    )
+    if row["retrieval_status"] != "retrieved":
+        db.execute(
+            """
+            INSERT INTO fulltext_retrieval_events(
+                project_id, paper_id, status, reason, updated_by, updated_at
+            ) VALUES (?, ?, 'retrieved', '', 'document-upload', ?)
+            """,
+            (project_id, paper_id, updated_at),
+        )
 
 
 def _recompute_screening(
@@ -1982,6 +3228,14 @@ def _paper_row(row: sqlite3.Row) -> dict[str, Any]:
         "reviewer": row["reviewer"],
         "tags": _loads(row["tags_json"], []),
         "decided_at": row["decided_at"],
+        "retrieval_status": row["retrieval_status"],
+        "retrieval_reason": row["retrieval_reason"],
+        "retrieval_updated_at": row["retrieval_updated_at"],
+        "fulltext_status": row["fulltext_status"],
+        "fulltext_reason": row["fulltext_reason"],
+        "fulltext_exclusion_code": row["fulltext_exclusion_code"],
+        "fulltext_reviewer": row["fulltext_reviewer"],
+        "fulltext_decided_at": row["fulltext_decided_at"],
     }
 
 

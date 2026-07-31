@@ -144,6 +144,89 @@ ER  -
                         0,
                     )
 
+                fulltext = root / "paper.txt"
+                fulltext.write_text(
+                    "A full report without primary empirical research.",
+                    encoding="utf-8",
+                )
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(
+                        main(
+                            [
+                                "document",
+                                "add",
+                                project_id,
+                                str(fulltext),
+                                "--paper-id",
+                                str(paper_id),
+                            ]
+                        ),
+                        0,
+                    )
+                    self.assertEqual(
+                        main(
+                            [
+                                "screen",
+                                "fulltext",
+                                "configure",
+                                project_id,
+                            ]
+                        ),
+                        0,
+                    )
+                    for reviewer in ("alice", "bob"):
+                        self.assertEqual(
+                            main(
+                                [
+                                    "screen",
+                                    "fulltext",
+                                    "decide",
+                                    project_id,
+                                    str(paper_id),
+                                    "excluded",
+                                    "--reason",
+                                    "Not primary research",
+                                    "--reason-code",
+                                    "not_primary_research",
+                                    "--reviewer",
+                                    reviewer,
+                                ]
+                            ),
+                            0,
+                        )
+                    self.assertEqual(
+                        main(
+                            [
+                                "screen",
+                                "fulltext",
+                                "configure",
+                                project_id,
+                                "--open",
+                            ]
+                        ),
+                        0,
+                    )
+                fulltext_status = io.StringIO()
+                with redirect_stdout(fulltext_status):
+                    self.assertEqual(
+                        main(
+                            [
+                                "screen",
+                                "fulltext",
+                                "status",
+                                project_id,
+                                "--json",
+                            ]
+                        ),
+                        0,
+                    )
+                self.assertEqual(
+                    json.loads(fulltext_status.getvalue())["papers"][0][
+                        "fulltext_status"
+                    ],
+                    "excluded",
+                )
+
     def test_bibliography_import_has_human_and_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

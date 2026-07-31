@@ -65,6 +65,7 @@ initialized → planned → searched → screened
 - SQLite/WAL 项目库，可管理多个课题和多次运行。
 - 论文、证据卡、筛选决定、质量评价、文档和报告版本化保存。
 - 支持独立双人盲审、完成后揭盲、冲突仲裁和追加式决定历史。
+- 标题/摘要与全文两阶段门禁；记录全文获取、未取得原因和结构化排除理由。
 - PDF、Markdown、纯文本入库；页码级抽取和 SQLite FTS5 全文检索。
 - 研究方案支持 PICO 字段、年份、关键词、语言与研究类型限制。
 - 透明规则只提供筛选“建议”，正式纳排必须由人确认。
@@ -210,13 +211,33 @@ paper-agent screen resolve <project_id> <数据库论文ID> included `
 盲审由服务端裁剪响应，对方决定不会提前发送到浏览器。这里的 reviewer 是本地
 工作流身份与审计标签，不是登录账户；共享部署仍需额外认证与项目权限。
 
-### 4. 继续证据综合
+### 4. 全文获取与最终纳入
+
+标题与摘要阶段全部完成后，可启用第二阶段。上传并关联全文会自动把报告标记为
+`retrieved`；无法取得时必须记录原因。全文排除必须同时填写稳定原因代码和具体说明。
+
+```powershell
+paper-agent screen fulltext configure <project_id>
+paper-agent document add <project_id> paper.pdf --paper-id <数据库论文ID>
+paper-agent screen fulltext status <project_id>
+paper-agent screen fulltext decide <project_id> <数据库论文ID> included `
+  --reason "完整实验报告满足预注册标准"
+paper-agent screen fulltext decide <project_id> <数据库论文ID> excluded `
+  --reason-code not_primary_research `
+  --reason "全文为立场文章，没有独立实验"
+```
+
+双人项目会沿用两位 reviewer，并默认继续盲审；双方完成后使用
+`paper-agent screen fulltext configure <project_id> --open` 揭盲。若两人都排除但
+主要排除原因不同，也必须显式仲裁。
+
+### 5. 继续证据综合
 
 ```powershell
 paper-agent research continue <run_id>
 ```
 
-### 5. 导入已有文献库
+### 6. 导入已有文献库
 
 可直接使用 Zotero、EndNote 或 JabRef 导出的 RIS、BibTeX/BibLaTeX 与
 CSL JSON 文件：
@@ -229,22 +250,22 @@ paper-agent bibliography import <project_id> references.bib --json
 导入会保留已有筛选决定与更完整的元数据，重复运行同一文件不会重复入库。当前
 提供本地文件互操作，不包含 Zotero 在线账户同步。
 
-### 6. 导入全文并检索
+### 7. 导入全文并检索
 
 ```powershell
 paper-agent document add <project_id> paper.pdf --paper-id <数据库论文ID>
 paper-agent document search <project_id> "sample size evaluation"
 ```
 
-### 7. 评测与导出
+### 8. 评测与导出
 
 ```powershell
 paper-agent evaluate .paper-agent\<project_id>\runs\<运行目录>
 paper-agent project export <project_id> exports\my-review.zip
 ```
 
-导出包包含项目元数据、论文库、完整筛选/改判/仲裁审计、报告、运行产物、
-全文和 SHA-256 清单，不包含 API 密钥。
+导出包包含项目元数据、论文库、两阶段筛选/改判/仲裁审计、`prisma_flow.json`、
+报告、运行产物、全文和 SHA-256 清单，不包含 API 密钥。
 
 ## 本地 REST API
 

@@ -23,10 +23,12 @@
 - CLI 人类可读摘要与显式 `--json` 机器输出
 - RIS、BibTeX/BibLaTeX 与 CSL JSON 文献库批量导入
 - 导入事务、保守去重、元数据无损补全与稳定证据 ID
+- 独立双 reviewer 盲审、揭盲、冲突检测与仲裁
+- 标题/摘要与全文两阶段筛选门、全文获取状态和结构化排除原因
+- PRISMA 式运行计数、排除原因汇总和完整筛选审计导出
 
 ## 下一阶段
 
-- 双 reviewer 盲审、冲突检测与仲裁
 - PubMed、Crossref、Europe PMC 与 Zotero 在线连接器
 - 页码级证据引用进入报告正文
 - RoB 2、ROBINS-I、QUADAS-2 的人工表单
