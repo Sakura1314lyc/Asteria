@@ -3039,7 +3039,7 @@ label > span {
   gap: 5px;
   margin-bottom: 16px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .run-console {
@@ -3059,7 +3059,36 @@ label > span {
 }
 
 .run-console__activity {
+  min-width: 0;
   padding: 20px;
+}
+
+.run-console__activity > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.run-console__activity > header > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.run-console__activity > header small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.event-stream {
+  max-height: 470px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .event-stream__item {
@@ -3070,15 +3099,19 @@ label > span {
   border-bottom: 1px solid var(--border);
 }
 
+.event-stream__item > i {
+  display: none;
+}
+
 .event-stream__time {
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .event-stream__item p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .stage-rail {
@@ -3092,7 +3125,7 @@ label > span {
   align-items: center;
   gap: 8px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .stage-rail__node {
@@ -3190,7 +3223,7 @@ label > span {
 
 .gate-panel__selectors select {
   min-height: 32px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .completion-strip > .button {
@@ -3215,7 +3248,136 @@ label > span {
   gap: 9px;
   padding: 11px 14px;
   border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.search-ledger {
+  margin-top: 18px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-subtle) 70%, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.search-ledger__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px 15px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-ledger__header h2 {
+  margin: 3px 0 2px;
+  font-size: 19px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+}
+
+.search-ledger__header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.search-ledger__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 9px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
   font-size: 12px;
+}
+
+.search-ledger__restrictions {
+  display: grid;
+  grid-template-columns: 16px max-content minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 9px 20px;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent-soft) 48%, transparent);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.search-ledger__restrictions span {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.search-ledger__restrictions p {
+  margin: 0;
+}
+
+.search-ledger__table {
+  width: 100%;
+}
+
+.search-ledger__row {
+  display: grid;
+  grid-template-columns: 160px minmax(260px, 1fr) 100px 145px;
+  gap: 14px;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.search-ledger__row:last-child {
+  border-bottom: 0;
+}
+
+.search-ledger__row--head {
+  min-height: 34px;
+  padding-block: 6px;
+  color: var(--text-muted);
+  background: var(--surface);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.search-ledger__row.is-failed {
+  background: color-mix(in srgb, var(--red-soft) 48%, transparent);
+}
+
+.search-ledger__source {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-ledger__source svg {
+  color: var(--green);
+}
+
+.search-ledger__row.is-failed .search-ledger__source svg {
+  color: var(--red);
+}
+
+.search-ledger__query {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-ledger__row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.search-ledger__query small {
+  overflow: hidden;
+  color: var(--red);
+  text-overflow: ellipsis;
 }
 
 .artifact-list > :last-child {
@@ -4415,6 +4577,14 @@ label > span {
   .run-console__rail {
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .search-ledger__table {
+    overflow-x: auto;
+  }
+
+  .search-ledger__row {
+    min-width: 760px;
   }
 
   .gate-panel {

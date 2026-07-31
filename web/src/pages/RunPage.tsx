@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, apiUrl } from "../api/client";
 import { RunStageRail } from "../components/RunStageRail";
+import { SearchLedger } from "../components/SearchLedger";
 import {
   Button,
   ErrorState,
@@ -52,6 +53,13 @@ export function RunPage() {
     queryKey: ["artifacts", runId],
     queryFn: () => api.listArtifacts(runId),
     enabled: Boolean(run.data?.run_dir)
+  });
+  const research = useQuery({
+    queryKey: ["research", runId],
+    queryFn: () => api.getResearch(runId),
+    enabled: Boolean(run.data?.run_dir),
+    refetchInterval: () =>
+      ["queued", "running"].includes(run.data?.status ?? "") ? 1800 : false
   });
   const agents = useQuery({ queryKey: ["agents"], queryFn: api.listAgents });
   const connections = useQuery({
@@ -137,6 +145,10 @@ export function RunPage() {
           </div>
         </div>
       </section>
+
+      {research.data?.search_log?.executions?.length ? (
+        <SearchLedger runId={runId} log={research.data.search_log} />
+      ) : null}
 
       {data.status === "waiting_for_screening" && (
         <section className="gate-panel">

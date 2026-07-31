@@ -7,8 +7,9 @@ from pathlib import Path
 
 from paper_agent.artifacts import citation_audit
 from paper_agent.config import Settings
+from paper_agent.domain import ReviewProtocol
 from paper_agent.llm import DemoLLM, _extract_output_text
-from paper_agent.models import Paper
+from paper_agent.models import Paper, ResearchState
 from paper_agent.retrievers import FixtureRetriever, rank_papers, search_all
 from paper_agent.workflow import ResearchAgent
 
@@ -16,6 +17,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CoreTests(unittest.TestCase):
+    def test_research_state_ignores_future_fields_and_defaults_search_log(self) -> None:
+        state = ResearchState.from_dict(
+            {
+                "run_id": "old-run",
+                "topic": "legacy",
+                "question": "Does it resume?",
+                "language": "en",
+                "future_field": {"not": "known"},
+            }
+        )
+        self.assertEqual(state.search_log, {})
+        self.assertEqual(state.run_id, "old-run")
+
     def test_extracts_responses_api_output_text(self) -> None:
         response = {
             "output": [
@@ -88,7 +102,7 @@ class CoreTests(unittest.TestCase):
             def search(self, query: str, limit: int) -> list[Paper]:
                 raise RuntimeError("temporary outage")
 
-        papers, warnings = search_all(
+        papers, warnings, executions = search_all(
             [GoodRetriever(), FailingRetriever()],
             ["topic"],
             Settings(results_per_query=1),
@@ -96,6 +110,10 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(len(papers), 1)
         self.assertEqual(len(warnings), 1)
         self.assertIn("temporary outage", warnings[0])
+        self.assertEqual([item.status for item in executions], ["succeeded", "failed"])
+        self.assertEqual(executions[0].result_count, 1)
+        self.assertEqual(executions[1].result_count, 0)
+        self.assertEqual(executions[1].error, "temporary outage")
 
     def test_demo_workflow_writes_all_artifacts(self) -> None:
         fixture = ROOT / "examples" / "demo_papers.json"
@@ -110,12 +128,17 @@ class CoreTests(unittest.TestCase):
                 settings=settings,
                 llm=DemoLLM("科研智能体"),
                 retrievers=[FixtureRetriever(fixture)],
+                protocol=ReviewProtocol(
+                    year_from=2020,
+                    languages=["en"],
+                ),
             )
             run_dir = agent.run("科研智能体", "如何构建可审计的科研智能体？")
             expected = {
                 "state.json",
                 "events.jsonl",
                 "plan.json",
+                "search_log.json",
                 "search_results.json",
                 "evidence.json",
                 "report.md",
@@ -129,6 +152,23 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(state["stage"], "completed")
             self.assertEqual(len(state["papers"]), 5)
             self.assertTrue(state["audit"]["passed"])
+            search_log = json.loads(
+                (run_dir / "search_log.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(search_log["schema_version"], 1)
+            self.assertEqual(search_log["summary"]["failed"], 0)
+            self.assertEqual(
+                search_log["configured_restrictions"]["year_from"],
+                2020,
+            )
+            self.assertEqual(
+                search_log["configured_restrictions"]["languages"],
+                ["en"],
+            )
+            self.assertGreater(
+                search_log["summary"]["records_returned_before_deduplication"],
+                search_log["summary"]["unique_records_after_deduplication"],
+            )
 
     def test_workflow_preserves_an_explicit_research_question(self) -> None:
         fixture = ROOT / "examples" / "demo_papers.json"

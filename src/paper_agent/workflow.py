@@ -312,8 +312,53 @@ class ResearchAgent:
             "searching",
             f"正在并行执行 {len(queries)} 个检索式。",
         )
-        raw_papers, warnings = search_all(self.retrievers, queries, self.settings)
+        raw_papers, warnings, executions = search_all(
+            self.retrievers,
+            queries,
+            self.settings,
+        )
         state.warnings.extend(warnings)
+        records_returned = sum(item.result_count for item in executions)
+        protocol_data = (
+            self.protocol.to_dict()
+            if self.protocol is not None
+            else state.settings.get("protocol", {})
+        )
+        if not isinstance(protocol_data, dict):
+            protocol_data = {}
+        state.search_log = {
+            "schema_version": 1,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "topic": state.topic,
+            "question": state.question,
+            "configured_restrictions": {
+                "year_from": protocol_data.get("year_from"),
+                "year_to": protocol_data.get("year_to"),
+                "languages": protocol_data.get("languages", []),
+                "study_types": protocol_data.get("study_types", []),
+                "max_queries": self.settings.max_queries,
+                "results_per_query": self.settings.results_per_query,
+                "max_papers_after_ranking": self.settings.max_papers,
+            },
+            "summary": {
+                "planned_executions": len(executions),
+                "succeeded": sum(
+                    item.status == "succeeded" for item in executions
+                ),
+                "failed": sum(item.status == "failed" for item in executions),
+                "records_returned_before_deduplication": records_returned,
+                "unique_records_after_deduplication": len(raw_papers),
+                "duplicates_removed": max(0, records_returned - len(raw_papers)),
+                "records_selected_after_ranking": 0,
+            },
+            "executions": [item.to_dict() for item in executions],
+            "warnings": warnings,
+            "reporting_note": (
+                "Execution-level audit trail. Configured restrictions are review "
+                "protocol settings and may be applied after source retrieval."
+            ),
+        }
+        write_json(run_dir / "search_log.json", state.search_log)
         if not raw_papers:
             details = "\n".join(warnings[-5:])
             raise WorkflowError(f"No papers were retrieved.\n{details}")
@@ -322,6 +367,10 @@ class ResearchAgent:
             " ".join([state.topic, state.question, *queries]),
             self.settings.max_papers,
         )
+        state.search_log["summary"]["records_selected_after_ranking"] = len(
+            state.papers
+        )
+        write_json(run_dir / "search_log.json", state.search_log)
         state.touch("searched")
         write_json(
             run_dir / "search_results.json",

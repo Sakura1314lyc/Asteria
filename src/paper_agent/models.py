@@ -69,6 +69,23 @@ class EvidenceCard:
 
 
 @dataclass(slots=True)
+class SearchExecution:
+    source: str
+    query: str
+    limit: int
+    started_at: str
+    completed_at: str
+    duration_ms: int
+    status: str
+    result_count: int
+    endpoint: str = ""
+    error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
 class ResearchState:
     run_id: str
     topic: str
@@ -78,6 +95,7 @@ class ResearchState:
     created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     plan: dict[str, Any] = field(default_factory=dict)
+    search_log: dict[str, Any] = field(default_factory=dict)
     papers: list[Paper] = field(default_factory=list)
     screening: list[dict[str, Any]] = field(default_factory=list)
     evidence: list[EvidenceCard] = field(default_factory=list)
@@ -107,4 +125,5 @@ class ResearchState:
         payload["evidence"] = [
             EvidenceCard.from_dict(item) for item in data.get("evidence", [])
         ]
-        return cls(**payload)
+        allowed = {f.name for f in cls.__dataclass_fields__.values()}
+        return cls(**{key: value for key, value in payload.items() if key in allowed})

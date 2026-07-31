@@ -1,0 +1,1 @@
+import{y as e}from"./index-DESK30IZ.js";function t(){return e()}export{t};

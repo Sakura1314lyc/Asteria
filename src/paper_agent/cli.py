@@ -154,6 +154,15 @@ def _print_run_summary(value: dict[str, object]) -> None:
         f"{_percent(assessment_coverage)} "
         f"· 有效词汇对齐：{_percent(effective_alignment)}"
     )
+    search_summary = value.get("search_summary") or {}
+    if isinstance(search_summary, dict) and search_summary:
+        print(
+            "检索账本："
+            f"{search_summary.get('succeeded', 0)}/"
+            f"{search_summary.get('planned_executions', 0)} 次成功 "
+            f"· 去重前 {search_summary.get('records_returned_before_deduplication', 0)} "
+            f"· 去重后 {search_summary.get('unique_records_after_deduplication', 0)}"
+        )
     warnings = value.get("warnings") or []
     if warnings:
         print(f"警告：{len(warnings)} 条（使用 --json 查看详情）")
@@ -860,6 +869,7 @@ def main(argv: list[str] | None = None) -> int:
                 "question": state.question,
                 "papers": len(state.papers),
                 "evidence_cards": len(state.evidence),
+                "search_summary": state.search_log.get("summary", {}),
                 "audit": state.audit,
                 "warnings": state.warnings,
             }

@@ -67,8 +67,9 @@ Web 或 `paper-agent screen configure` 可以为项目启用两个 reviewer 的�
 - [PRISMA 2020 flow diagram](https://www.prisma-statement.org/prisma-2020-flow-diagram)
   区分记录筛选、报告获取、全文资格评估、排除原因和最终纳入研究。
 - [PRISMA-S](https://www.equator-network.org/reporting-guidelines/prisma-s/)
-  要求完整报告来源、检索策略与检索日期；当前系统保存运行检索信息，但仍需研究者
-  检查各数据库报告要求。
+  要求完整报告来源、检索策略与检索日期；系统以 `search_log.json` 保存每个来源的
+  实际查询式、接口、执行时间、耗时、返回数量和故障，并区分配置限制与来源侧限制。
+  研究者仍需检查各数据库的完整报告要求并确认策略覆盖度。
 
 ## `maybe` 的处理
 

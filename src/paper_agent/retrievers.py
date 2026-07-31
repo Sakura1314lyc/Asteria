@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 from xml.etree import ElementTree
 
 from .config import Settings
-from .models import Paper
+from .models import Paper, SearchExecution
 from .net import request_bytes, request_json
 
 
@@ -428,10 +428,47 @@ def search_all(
     retrievers: list[Retriever],
     queries: list[str],
     settings: Settings,
-) -> tuple[list[Paper], list[str]]:
+) -> tuple[list[Paper], list[str], list[SearchExecution]]:
     results: list[Paper] = []
     warnings: list[str] = []
+    executions: list[SearchExecution] = []
     jobs = []
+
+    def execute(retriever: Retriever, query: str) -> tuple[list[Paper], SearchExecution]:
+        started = datetime.now(UTC)
+        started_counter = time.perf_counter()
+        status = "succeeded"
+        error = ""
+        papers: list[Paper] = []
+        try:
+            papers = retriever.search(query, settings.results_per_query)
+        except Exception as exc:  # noqa: BLE001 - record isolated source failures
+            status = "failed"
+            error = str(exc)
+        completed = datetime.now(UTC)
+        endpoints = {
+            "openalex": "https://api.openalex.org/works",
+            "arxiv": "https://export.arxiv.org/api/query",
+            "semantic_scholar": (
+                "https://api.semanticscholar.org/graph/v1/paper/search"
+            ),
+            "dblp": "https://dblp.org/search/publ/api",
+            "fixture": "local fixture",
+        }
+        execution = SearchExecution(
+            source=retriever.name,
+            query=query,
+            limit=settings.results_per_query,
+            started_at=started.isoformat(),
+            completed_at=completed.isoformat(),
+            duration_ms=max(0, round((time.perf_counter() - started_counter) * 1000)),
+            status=status,
+            result_count=len(papers),
+            endpoint=endpoints.get(retriever.name, ""),
+            error=error,
+        )
+        return papers, execution
+
     with ThreadPoolExecutor(
         max_workers=min(8, max(1, len(retrievers) * len(queries)))
     ) as pool:
@@ -441,18 +478,17 @@ def search_all(
                     (
                         retriever.name,
                         query,
-                        pool.submit(
-                            retriever.search,
-                            query,
-                            settings.results_per_query,
-                        ),
+                        pool.submit(execute, retriever, query),
                     )
                 )
         for source, query, future in jobs:
-            try:
-                results.extend(future.result())
-            except Exception as exc:  # noqa: BLE001 - isolate source failures
-                warnings.append(f"{source} query {query!r} failed: {exc}")
+            papers, execution = future.result()
+            executions.append(execution)
+            results.extend(papers)
+            if execution.status == "failed":
+                warnings.append(
+                    f"{source} query {query!r} failed: {execution.error}"
+                )
 
     deduped: dict[str, Paper] = {}
     for paper in results:
@@ -461,4 +497,4 @@ def search_all(
             deduped[key] = _merge(deduped[key], paper)
         else:
             deduped[key] = paper
-    return list(deduped.values()), warnings
+    return list(deduped.values()), warnings, executions

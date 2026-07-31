@@ -83,6 +83,7 @@ initialized → planned → searched → screened
 state.json                    完整检查点
 events.jsonl                  阶段事件轨迹
 plan.json                     研究计划与检索式
+search_log.json               来源、实际查询式、时间、数量与故障的逐次检索账本
 search_results.json           去重后的论文
 screening.json                纳排决定与理由
 evidence.json                 逐篇证据卡

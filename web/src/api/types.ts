@@ -267,12 +267,54 @@ export interface QualityRecord {
   missing?: string[];
 }
 
+export interface SearchExecution {
+  source: string;
+  query: string;
+  limit: number;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  status: "succeeded" | "failed";
+  result_count: number;
+  endpoint: string;
+  error: string;
+}
+
+export interface SearchLog {
+  schema_version: number;
+  generated_at: string;
+  topic: string;
+  question: string;
+  configured_restrictions: {
+    year_from: number | null;
+    year_to: number | null;
+    languages: string[];
+    study_types: string[];
+    max_queries: number;
+    results_per_query: number;
+    max_papers_after_ranking: number;
+  };
+  summary: {
+    planned_executions: number;
+    succeeded: number;
+    failed: number;
+    records_returned_before_deduplication: number;
+    unique_records_after_deduplication: number;
+    duplicates_removed: number;
+    records_selected_after_ranking: number;
+  };
+  executions: SearchExecution[];
+  warnings: string[];
+  reporting_note: string;
+}
+
 export interface ResearchBundle {
   run: Run;
   topic: string;
   question: string;
   stage: string;
   plan: Record<string, unknown>;
+  search_log?: SearchLog;
   papers: Paper[];
   screening: Array<Record<string, unknown>>;
   evidence: EvidenceCard[];

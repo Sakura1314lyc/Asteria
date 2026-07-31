@@ -42,7 +42,7 @@ class ApiWebTests(unittest.TestCase):
             app = create_app(self.make_settings(root))
             with TestClient(app) as client:
                 health = client.get("/health").json()
-                self.assertEqual(health["version"], "0.8.1")
+                self.assertEqual(health["version"], "0.9.0")
                 self.assertTrue(health["web_available"])
                 self.assertEqual(client.get("/").status_code, 200)
                 self.assertIn("Asteria", client.get("/app").text)
@@ -127,6 +127,13 @@ class ApiWebTests(unittest.TestCase):
                 research = client.get(f"/runs/{run_id}/research")
                 self.assertEqual(research.status_code, 200)
                 self.assertEqual(len(research.json()["evidence"]), 4)
+                self.assertEqual(research.json()["search_log"]["schema_version"], 1)
+                self.assertGreater(
+                    research.json()["search_log"]["summary"][
+                        "planned_executions"
+                    ],
+                    0,
+                )
                 self.assertTrue(client.get(f"/runs/{run_id}/report").json()["markdown"])
                 self.assertIn("nodes", client.get(f"/runs/{run_id}/graph").json())
                 artifact_names = {
@@ -135,6 +142,7 @@ class ApiWebTests(unittest.TestCase):
                 }
                 self.assertIn("cs_evidence_matrix.csv", artifact_names)
                 self.assertIn("citation_grounding.json", artifact_names)
+                self.assertIn("search_log.json", artifact_names)
                 self.assertIn("report.md", artifact_names)
 
                 conversation = client.post(
