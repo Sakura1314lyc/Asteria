@@ -16,7 +16,8 @@ import {
   LoadingState,
   SectionTitle,
   Stat,
-  StatusBadge
+  StatusBadge,
+  reviewTypeLabel
 } from "../components/Ui";
 
 function latestRun(project: Project): Run | undefined {
@@ -56,16 +57,20 @@ export function DashboardPage() {
   );
   const activeJobs =
     jobs.data?.filter((job) => ["queued", "running"].includes(job.status)) ?? [];
+  const priorityProject = items.find((project) => (project.stats.pending ?? 0) > 0);
 
   return (
     <div className="dashboard page-pad">
       <header className="dashboard-hero">
         <div className="dashboard-hero__copy">
-          <h1>研究工作台</h1>
+          <span className="dashboard-hero__kicker">Asteria / research desk</span>
+          <h1>今天从哪一步继续？</h1>
           <p>
             {activeJobs.length > 0
               ? `${activeJobs.length} 个研究任务正在运行`
-              : "整理项目、筛选文献并检查研究证据。"}
+              : pending > 0
+                ? `${pending} 篇候选论文正在等待人工判断。`
+                : "所有研究门禁都已处理，可以启动新的检索或复核证据。"}
           </p>
         </div>
         <div className="dashboard-hero__actions">
@@ -89,12 +94,18 @@ export function DashboardPage() {
         />
       </section>
 
-      {pending > 0 && (
-        <Link className="attention-strip" to="/projects">
+      {priorityProject && (
+        <Link
+          className="attention-strip"
+          to={`/projects/${priorityProject.id}/screening`}
+        >
           <BookCheck size={19} />
           <div>
-            <strong>还有 {pending} 篇论文等待人工判断</strong>
-            <span>系统不会替你静默排除论文，打开项目继续筛选。</span>
+            <small>下一项人工任务</small>
+            <strong>{priorityProject.name}</strong>
+            <span>
+              {priorityProject.stats.pending} 篇待筛选；系统不会静默替你排除。
+            </span>
           </div>
           <ArrowRight size={17} />
         </Link>
@@ -102,8 +113,9 @@ export function DashboardPage() {
 
       <section className="dashboard-section">
         <SectionTitle
-          title="最近的研究"
-          detail="每个项目保留独立的方案、论文库和运行历史。"
+          eyebrow="Research ledger"
+          title="最近更新的研究"
+          detail="每一行都是独立、可恢复的研究档案。"
           action={
             <Link className="text-link" to="/projects">
               全部项目 <ArrowRight size={14} />
@@ -140,9 +152,9 @@ export function DashboardPage() {
                       <p>{project.research_question}</p>
                     </div>
                     <div className="research-ledger__meta">
-                      <span>{project.review_type}</span>
-                      <span>{project.stats.total} papers</span>
-                      <span>{project.stats.documents} full text</span>
+                      <span>{reviewTypeLabel(project.review_type)}</span>
+                      <span>{project.stats.total} 篇候选</span>
+                      <span>{project.stats.documents} 份全文</span>
                     </div>
                   </div>
                   <div className="research-ledger__run">

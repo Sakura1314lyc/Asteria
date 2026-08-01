@@ -59,3 +59,7 @@ jobs:
         run: pnpm build
       - name: Verify packaged frontend is current
         run: git diff --exit-code -- src/paper_agent/web_dist
+      - name: Verify wheel contains only current frontend assets
+        run: |
+          python -m pip wheel . --no-deps --no-cache-dir --wheel-dir wheelhouse
+          python scripts/verify_wheel.py wheelhouse/paper_research_agent-*.whl

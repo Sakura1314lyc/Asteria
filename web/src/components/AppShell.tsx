@@ -12,7 +12,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Logo } from "./Logo";
 
 const nav = [
-  { to: "/", label: "工作台", icon: Activity },
+  { to: "/", label: "今日工作", icon: Activity },
   { to: "/projects", label: "研究项目", icon: FolderKanban },
   { to: "/library", label: "文献入口", icon: BookOpenText },
   { to: "/settings", label: "运行环境", icon: Settings }
@@ -24,6 +24,7 @@ export function AppShell() {
   return (
     <div className="app-frame">
       <button
+        type="button"
         className="mobile-menu"
         onClick={() => setMobileOpen((value) => !value)}
         aria-label="打开导航"
@@ -38,6 +39,7 @@ export function AppShell() {
         <div className="sidebar__top">
           <Logo />
           <button
+            type="button"
             className="new-project"
             onClick={() => {
               navigate("/projects?new=1");
@@ -64,8 +66,11 @@ export function AppShell() {
           ))}
         </nav>
         <footer className="sidebar__footer">
-          <span className="local-dot" />
-          本地工作区 · v0.9.0
+          <span className="local-dot" aria-hidden="true" />
+          <span>
+            <strong>本地工作区</strong>
+            <small>数据留在此设备 · v0.10.0</small>
+          </span>
         </footer>
       </aside>
       <main className="main-surface">

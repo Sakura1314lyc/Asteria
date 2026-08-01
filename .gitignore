@@ -11,4 +11,5 @@ build/
 runs/
 .paper-agent/
 web/node_modules/
+web/artifacts/
 web/*.tsbuildinfo

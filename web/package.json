@@ -1,14 +1,17 @@
 {
   "name": "paper-research-workbench-web",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ui:explore": "node scripts/ui-demo.cjs --explore",
+    "ui:rehearse": "node scripts/ui-demo.cjs --rehearse",
+    "ui:record": "node scripts/ui-demo.cjs --record"
   },
   "dependencies": {
     "@primer/primitives": "11.9.0",
@@ -28,6 +31,7 @@
     "@types/react-dom": "^19.2.2",
     "@vitejs/plugin-react": "^6.0.1",
     "jsdom": "^28.0.0",
+    "playwright": "1.62.1",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.0"

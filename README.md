@@ -1,12 +1,55 @@
-# Paper Research Workbench
+# Asteria
+
+> 面向计算机科学的本地优先科研 Agent：把检索、人工筛选、全文、证据、复现分析与引用报告保存在同一条可审计工作流中。
 
 [![CI](https://github.com/Sakura1314lyc/Asteria/actions/workflows/ci.yml/badge.svg)](https://github.com/Sakura1314lyc/Asteria/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f6f61.svg)](LICENSE)
 
-一个专精计算机科学、本地优先、证据可追踪、支持人工审查的论文科研 Agent 工作台。
+[![Version](https://img.shields.io/badge/version-0.10.0-175cd3.svg)](CHANGELOG.md)
 
-它不再只是“一次提问、一次生成”的脚本，而是一个可以长期维护多个课题的科研系统：保存研究方案、检索记录、论文库、全文、纳排决定、证据卡、质量评价、文献图谱、报告历史与评测结果。
+![Asteria 工作台](docs/assets/asteria-workbench.png)
+
+Asteria 不是“输入题目后返回一篇长文”的聊天壳。它把一个研究课题保存为可恢复项目，记录研究方案、每次实际检索、论文与全文、人工纳排、证据卡、质量评价、文献图谱、报告版本和评测结果。
+
+## 五分钟本地体验
+
+需要 Python 3.11+，演示流程不需要密钥，也不会访问网络：
+
+```powershell
+git clone https://github.com/Sakura1314lyc/Asteria.git
+cd Asteria
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[all]"
+paper-agent serve
+```
+
+打开 [http://127.0.0.1:8765/app](http://127.0.0.1:8765/app)，新建研究并选择“离线演示语料”。CLI 用户也可以直接运行：
+
+```powershell
+paper-agent run "科研智能体" --demo --fixture examples/demo_papers.json
+```
+
+## 它解决什么问题
+
+| 研究环节 | Asteria 当前提供 | 留下的审计依据 |
+|---|---|---|
+| 方案 | 叙述性、范围、系统综述与 CS 复现审计 | 研究问题、限制条件、采用的检索式 |
+| 检索 | OpenAlex、arXiv、DBLP、Semantic Scholar 与可插拔检索器 | 每个来源的实际查询、时间、数量、故障与去重损耗 |
+| 筛选 | 标题/摘要与全文两阶段人工门；支持双人盲审和仲裁 | 追加式决定历史、理由、冲突与 PRISMA 式计数 |
+| 证据 | CS 论文结构化字段、benchmark、复现性与证据缺口 | 稳定论文/证据 ID、全文页码和结构化矩阵 |
+| 综合 | 证据约束对话、引用型报告与版本保存 | 段落引用、BibTeX、引用结构和词汇对齐诊断 |
+| 交接 | 项目 ZIP、运行产物和 SHA-256 清单 | 可移植原始材料、配置、事件与报告 |
+
+默认数据保存在本机 SQLite/WAL 数据库。范围综述和系统综述会在检索后停在人工门，不会静默替研究者排除论文。
+
+## 当前成熟度与边界
+
+- 单机研究工作台已经贯通 Web、CLI、REST API、SQLite 状态、离线演示与可移植导出；自动化测试不调用付费模型。
+- 当前没有账号与项目权限系统。服务默认只绑定 `127.0.0.1`，不能未经认证直接暴露到公网。
+- `audit.json` 是结构与可追踪性检查，不是事实核验；摘要级质量代理也不等于正式风险偏倚工具。
+- 研究者仍需阅读原文、判断方法质量、处理版权和遵守学术诚信要求。
 
 > 适用于选题探索、开题调研、叙述性综述、范围综述、系统综述准备和论文相关工作整理。它不会替代阅读全文、正式风险偏倚评价、统计分析、领域专家判断或学术诚信责任。
 
@@ -143,7 +186,7 @@ python -m pip install -e ".[all]"
 paper-agent serve
 ```
 
-打开 [http://127.0.0.1:8765/app](http://127.0.0.1:8765/app)。Web 前端已经包含在 Python 安装包中，提供项目概览、模型连接、Agent 选择、项目证据对话、跨项目文献入口、RIS/BibTeX/CSL JSON 导入、三栏文献库、逐篇筛选、运行事件、证据与复现矩阵、文献图谱、报告审计和全文检索。
+打开 [http://127.0.0.1:8765/app](http://127.0.0.1:8765/app)。Web 前端已经包含在 Python 安装包中，提供项目概览、模型连接、Agent 选择、项目证据对话、跨项目文献入口、RIS/BibTeX/CSL JSON 导入、三栏文献库、逐篇筛选、运行事件、证据与复现矩阵、文献图谱、报告审计和全文检索。项目页用“方案 → 检索 → 筛选 → 证据 → 报告”的证据脊柱显示当前人工门与下一步，而不是只给出一个模糊完成百分比。
 
 前端不是单一聊天框。交互借鉴 Zotero 的文献列表/检查器、ASReview 的人工筛选流和 Open Knowledge Maps 的图谱联动，详细说明见 [Web 工作台](docs/WEB.md)。
 
@@ -325,11 +368,22 @@ paper-agent taxonomy classify "LLM inference systems"
 ## 测试
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m unittest discover -s tests -v
+python -m ruff check src tests
+python -m pytest -q
+
+pnpm --dir web typecheck
+pnpm --dir web test
+pnpm --dir web build
 ```
 
-测试不访问网络，也不会调用付费模型。
+测试不访问网络，也不会调用付费模型。前端真实页面验收使用 Playwright，依次执行探索、无交互排练和录制：
+
+```powershell
+$env:QA_BASE_URL = "http://127.0.0.1:8765"
+pnpm --dir web ui:explore
+pnpm --dir web ui:rehearse
+pnpm --dir web ui:record
+```
 
 ## 文档
 
@@ -343,6 +397,12 @@ python -m unittest discover -s tests -v
 - [安全与隐私](docs/SECURITY.md)
 - [路线图](docs/ROADMAP.md)
 - [贡献指南](CONTRIBUTING.md)
+
+## 获取帮助与参与维护
+
+- 使用问题、缺陷和功能提议请提交到 [GitHub Issues](https://github.com/Sakura1314lyc/Asteria/issues)。报告问题时请附版本、操作系统、最小复现步骤和已脱敏日志。
+- 代码贡献先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)；涉及数据模型、筛选语义或安全边界的改动应同时补迁移与回归测试。
+- 项目当前由仓库维护者与贡献者共同维护，发布历史见 [CHANGELOG.md](CHANGELOG.md)，短中期缺口见 [路线图](docs/ROADMAP.md)。
 
 ## 重要证据边界
 

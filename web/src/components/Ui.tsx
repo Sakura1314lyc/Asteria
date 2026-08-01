@@ -5,6 +5,7 @@ export function Button({
   variant = "primary",
   size = "medium",
   loading = false,
+  type = "button",
   children,
   className = "",
   disabled,
@@ -16,6 +17,7 @@ export function Button({
 }) {
   return (
     <button
+      type={type}
       className={`button button--${variant} button--${size} ${className}`}
       disabled={disabled || loading}
       {...props}
@@ -30,12 +32,40 @@ export function StatusBadge({
   status,
   children
 }: PropsWithChildren<{ status: string }>) {
+  const labels: Record<string, string> = {
+    queued: "排队中",
+    running: "运行中",
+    waiting_for_screening: "待人工筛选",
+    completed: "已完成",
+    failed: "失败",
+    cancelled: "已取消",
+    pending: "待处理",
+    included: "已纳入",
+    excluded: "已排除",
+    maybe: "待讨论",
+    conflict: "有分歧"
+  };
+  const label =
+    typeof children === "string" && children === status
+      ? (labels[status] ?? children)
+      : (children ?? labels[status] ?? status);
   return (
     <span className={`status-badge status-badge--${status.replaceAll("_", "-")}`}>
       <i />
-      {children ?? status}
+      {label}
     </span>
   );
+}
+
+export function reviewTypeLabel(value: string) {
+  return (
+    {
+      narrative: "叙述性综述",
+      scoping: "范围综述",
+      systematic: "系统综述",
+      thesis: "论文调研"
+    } as Record<string, string>
+  )[value] ?? value;
 }
 
 export function SectionTitle({

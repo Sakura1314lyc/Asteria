@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import type { Project } from "../api/types";
-import { StatusBadge } from "./Ui";
+import { reviewTypeLabel, StatusBadge } from "./Ui";
 
 const tabs = [
   { segment: "", label: "概览", icon: LayoutDashboard, end: true },
@@ -29,7 +29,7 @@ export function ProjectHeader({ project }: { project: Project }) {
     <div className="project-masthead">
       <div className="project-masthead__identity">
         <span className="eyebrow">
-          {project.review_type} · {project.language}
+          {reviewTypeLabel(project.review_type)} · {project.language}
         </span>
         <h1>{project.name}</h1>
         <p>{project.research_question}</p>

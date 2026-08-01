@@ -14,7 +14,14 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, apiUrl } from "../api/client";
 import { RunStageRail } from "../components/RunStageRail";
-import { Button, SectionTitle, Stat, StatusBadge } from "../components/Ui";
+import { ResearchSpine } from "../components/ResearchSpine";
+import {
+  Button,
+  reviewTypeLabel,
+  SectionTitle,
+  Stat,
+  StatusBadge
+} from "../components/Ui";
 import { useProjectContext } from "../hooks/useProjectContext";
 
 export function ProjectOverviewPage() {
@@ -129,6 +136,8 @@ export function ProjectOverviewPage() {
         </div>
       </section>
 
+      <ResearchSpine project={project} />
+
       <section className="metric-ribbon">
         <Stat value={project.stats.total} label="候选论文" hint="去重后记录" />
         <Stat value={included} label="已纳入" hint={`${screeningProgress}% 已决定`} />
@@ -178,7 +187,7 @@ export function ProjectOverviewPage() {
         <aside className="overview-aside">
           <section className="protocol-note">
             <span className="eyebrow">研究方案</span>
-            <h3>{project.review_type} review</h3>
+            <h3>{reviewTypeLabel(project.review_type)}</h3>
             <dl>
               <div>
                 <dt>纳入关键词</dt>

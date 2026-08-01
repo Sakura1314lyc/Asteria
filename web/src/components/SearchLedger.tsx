@@ -14,7 +14,7 @@ export function SearchLedger({ runId, log }: SearchLedgerProps) {
     <section className="search-ledger" aria-labelledby="search-ledger-title">
       <header className="search-ledger__header">
         <div>
-          <span className="eyebrow">Search provenance</span>
+          <span className="eyebrow">Search provenance / 检索来源</span>
           <h2 id="search-ledger-title">检索账本</h2>
           <p>
             {log.summary.planned_executions} 次来源查询 · 去重前{" "}

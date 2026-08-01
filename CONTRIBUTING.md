@@ -3,11 +3,28 @@
 ## 本地检查
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m compileall -q src tests
-python -m unittest discover -s tests -v
-python -m pip wheel --no-deps .
+python -m ruff check src tests
+python -m pytest -q
+
+pnpm --dir web typecheck
+pnpm --dir web test
+pnpm --dir web build
 ```
+
+## 发布包检查
+
+前端哈希资源变化后，旧 `build/lib` 可能让 setuptools 把已经删除的资源带入
+wheel。发布前应在干净工作树或归档旧构建缓存后重新打包，并比较 wheel 与源码：
+
+```powershell
+python -m pip wheel . --no-deps --no-cache-dir --wheel-dir build\release
+$wheel = Get-ChildItem build\release\paper_research_agent-*.whl |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+python scripts\verify_wheel.py $wheel.FullName
+```
+
+验证器要求 wheel 中的 `paper_agent/web_dist` 与当前源码文件集合完全一致，缺失和
+陈旧哈希资源都会使检查失败。
 
 ## 设计原则
 

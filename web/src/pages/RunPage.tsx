@@ -23,6 +23,24 @@ import {
 } from "../components/Ui";
 import { useProjectContext } from "../hooks/useProjectContext";
 
+const eventStageNames: Record<string, string> = {
+  initialized: "初始化",
+  planning: "正在规划",
+  planned: "计划完成",
+  searching: "正在检索",
+  searched: "检索完成",
+  screening: "正在筛选",
+  screened: "筛选完成",
+  extracting: "正在抽取",
+  extracted: "抽取完成",
+  validating: "正在质检",
+  validated: "质检完成",
+  reporting: "正在撰写",
+  reported: "报告完成",
+  completed: "运行完成",
+  failed: "运行失败"
+};
+
 export function RunPage() {
   const { project } = useProjectContext();
   const { runId = "" } = useParams();
@@ -117,9 +135,9 @@ export function RunPage() {
         <div className="run-console__activity">
           <header>
             <span>
-              <FlaskConical size={16} /> Activity log
+              <FlaskConical size={16} /> 运行事件
             </span>
-            <small>{events.data?.length ?? 0} events</small>
+            <small>{events.data?.length ?? 0} 条记录</small>
           </header>
           <div className="event-stream">
             {(events.data ?? []).length === 0 ? (
@@ -136,7 +154,7 @@ export function RunPage() {
                   </span>
                   <i />
                   <div>
-                    <strong>{event.stage}</strong>
+                    <strong>{eventStageNames[event.stage] ?? event.stage}</strong>
                     <p>{event.message}</p>
                   </div>
                 </div>

@@ -30,7 +30,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <span className="brand__words">
           <strong>Asteria</strong>
-          <small>Research</small>
+          <small>evidence workspace</small>
         </span>
       )}
     </div>
