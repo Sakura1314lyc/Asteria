@@ -1,1 +1,0 @@
-import{b as e}from"./index-HdBuzOBO.js";function t(){return e()}export{t};

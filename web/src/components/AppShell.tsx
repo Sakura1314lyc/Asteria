@@ -8,7 +8,8 @@ import {
   X
 } from "lucide-react";
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router";
+import { PUBLIC_DEMO } from "../deployment";
 import { Logo } from "./Logo";
 
 const nav = [
@@ -41,6 +42,8 @@ export function AppShell() {
           <button
             type="button"
             className="new-project"
+            disabled={PUBLIC_DEMO}
+            title={PUBLIC_DEMO ? "公开观测站为只读样例" : undefined}
             onClick={() => {
               navigate("/projects?new=1", { viewTransition: true });
               setMobileOpen(false);
@@ -69,12 +72,27 @@ export function AppShell() {
         <footer className="sidebar__footer">
           <span className="local-dot" aria-hidden="true" />
           <span>
-            <strong>本地工作区</strong>
-            <small>数据留在此设备 · v0.11.0</small>
+            <strong>{PUBLIC_DEMO ? "公开观测站" : "本地工作区"}</strong>
+            <small>
+              {PUBLIC_DEMO ? "只读研究样例" : "数据留在此设备"} · v0.12.0
+            </small>
           </span>
         </footer>
       </aside>
       <main className="main-surface">
+        {PUBLIC_DEMO && (
+          <div className="public-demo-notice" role="status">
+            <span>Public observatory</span>
+            <strong>只读研究样例</strong>
+            <a
+              href="https://github.com/Sakura1314lyc/Asteria"
+              target="_blank"
+              rel="noreferrer"
+            >
+              在本地运行完整版本
+            </a>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

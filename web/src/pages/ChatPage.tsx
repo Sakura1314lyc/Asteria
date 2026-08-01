@@ -11,7 +11,7 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { api } from "../api/client";
 import type { ChatSource } from "../api/types";
 import { Button, ErrorState, LoadingState } from "../components/Ui";

@@ -42,7 +42,7 @@ class ApiWebTests(unittest.TestCase):
             app = create_app(self.make_settings(root))
             with TestClient(app) as client:
                 health = client.get("/health").json()
-                self.assertEqual(health["version"], "0.11.0")
+                self.assertEqual(health["version"], "0.12.0")
                 self.assertTrue(health["web_available"])
                 self.assertEqual(client.get("/").status_code, 200)
                 self.assertIn("Asteria", client.get("/app").text)

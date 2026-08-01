@@ -102,6 +102,12 @@ async function dumpPage(page, label) {
 }
 
 async function projectRoutes() {
+  if (process.env.QA_PROJECT_URL) {
+    return {
+      projectUrl: process.env.QA_PROJECT_URL,
+      runUrl: process.env.QA_RUN_URL || ''
+    };
+  }
   const response = await fetch(`${BASE_URL}/projects`);
   if (!response.ok) throw new Error(`Cannot read projects: HTTP ${response.status}`);
   const projects = await response.json();
@@ -125,7 +131,7 @@ async function explore(page, routes) {
   await dumpPage(page, '/app');
   await page.waitForTimeout(1500);
   await page.screenshot({
-    path: path.join(OUTPUT_DIR, 'dashboard-stable.png'),
+    path: process.env.QA_DASHBOARD_SCREENSHOT || path.join(OUTPUT_DIR, 'dashboard-stable.png'),
     fullPage: true
   });
   const firstProject = page.locator('.research-ledger__row').first();
@@ -237,7 +243,17 @@ async function record(page, routes) {
   const browserErrors = [];
   page.on('pageerror', (error) => browserErrors.push(`page: ${error.message}`));
   page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`);
+    if (message.type() === 'error') {
+      const location = message.location();
+      browserErrors.push(
+        `console: ${message.text()}${location.url ? ` (${location.url}:${location.lineNumber})` : ''}`
+      );
+    }
+  });
+  page.on('response', (response) => {
+    if (response.status() >= 400) {
+      browserErrors.push(`response: HTTP ${response.status()} ${response.url()}`);
+    }
   });
   const video = page.video();
   try {

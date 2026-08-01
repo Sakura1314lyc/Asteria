@@ -8,7 +8,7 @@ import {
   Search
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { api } from "../api/client";
 import type { ReviewType, TaxonomyMatch } from "../api/types";
 import {

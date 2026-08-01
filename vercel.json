@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm --prefix web install --no-package-lock --ignore-scripts && npm --prefix web run typecheck && cd web && VITE_PUBLIC_DEMO=1 npm exec -- vite build",
+  "fluid": true
+}

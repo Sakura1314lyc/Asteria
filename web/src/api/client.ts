@@ -24,6 +24,7 @@ import type {
   Taxonomy,
   TaxonomyMatch
 } from "./types";
+import { PUBLIC_DEMO, PUBLIC_DEMO_MESSAGE } from "../deployment";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
@@ -40,6 +41,10 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (PUBLIC_DEMO && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    throw new ApiError(403, PUBLIC_DEMO_MESSAGE);
+  }
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers:

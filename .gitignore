@@ -13,3 +13,7 @@ runs/
 web/node_modules/
 web/artifacts/
 web/*.tsbuildinfo
+/public/
+.vercel/
+
+.vercel

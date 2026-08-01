@@ -4,13 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paper-research-agent"
-version = "0.11.0"
+version = "0.12.0"
 description = "A full-stack computer-science research workbench with human screening, reproducibility analysis, and auditable evidence workflows."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Paper Research Agent contributors" }]
-dependencies = []
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
+  "python-multipart>=0.0.9,<1",
+  "pydantic>=2.7,<3",
+]
 
 [project.urls]
 Homepage = "https://github.com/Sakura1314lyc/Asteria"
@@ -20,17 +25,9 @@ Documentation = "https://github.com/Sakura1314lyc/Asteria/tree/main/docs"
 
 [project.optional-dependencies]
 api = [
-  "fastapi>=0.115,<1",
-  "uvicorn[standard]>=0.30,<1",
-  "python-multipart>=0.0.9,<1",
-  "pydantic>=2.7,<3",
 ]
 pdf = ["pypdf>=5,<7"]
 all = [
-  "fastapi>=0.115,<1",
-  "uvicorn[standard]>=0.30,<1",
-  "python-multipart>=0.0.9,<1",
-  "pydantic>=2.7,<3",
   "pypdf>=5,<7",
 ]
 dev = [

@@ -8,7 +8,7 @@ import {
   X
 } from "lucide-react";
 import { FormEvent, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { api, apiUrl } from "../api/client";
 import type { SearchHit } from "../api/types";
 import {

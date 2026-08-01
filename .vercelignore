@@ -1,0 +1,16 @@
+.agents/
+.paper-agent/
+.pytest_cache/
+.ruff_cache/
+.tmp/
+build/
+dist/
+docs/
+public/
+runs/
+src/paper_agent/web_dist/
+tests/
+web/artifacts/
+web/node_modules/
+**/__pycache__/
+*.pyc

@@ -10,7 +10,7 @@ import {
   ScrollText
 } from "lucide-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { api, apiUrl } from "../api/client";
 import { RunStageRail } from "../components/RunStageRail";
 import { SearchLedger } from "../components/SearchLedger";

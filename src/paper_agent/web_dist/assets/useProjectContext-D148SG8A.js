@@ -1,0 +1,1 @@
+import{S as e}from"./index-OEPE3Nzf.js";function t(){return e()}export{t};

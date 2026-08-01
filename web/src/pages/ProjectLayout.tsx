@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Outlet, useParams } from "react-router-dom";
+import { Outlet, useParams } from "react-router";
 import { api } from "../api/client";
 import { ProjectHeader, ProjectNav } from "../components/ProjectNav";
 import { ErrorState, LoadingState } from "../components/Ui";

@@ -11,7 +11,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { api, apiUrl } from "../api/client";
 import { RunStageRail } from "../components/RunStageRail";
 import { ResearchSpine } from "../components/ResearchSpine";

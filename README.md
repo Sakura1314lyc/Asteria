@@ -6,9 +6,11 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f6f61.svg)](LICENSE)
 
-[![Version](https://img.shields.io/badge/version-0.11.0-246bfd.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.12.0-246bfd.svg)](CHANGELOG.md)
 
-![Asteria 工作台](docs/assets/asteria-workbench.png)
+[在线观测站](https://asteria-observatory.vercel.app/app) · [本地安装](#五分钟本地体验) · [架构文档](docs/ARCHITECTURE.md)
+
+![Asteria Observatory](docs/assets/asteria-observatory.png)
 
 Asteria 不是“输入题目后返回一篇长文”的聊天壳。它把一个研究课题保存为可恢复项目，记录研究方案、每次实际检索、论文与全文、人工纳排、证据卡、质量评价、文献图谱、报告版本和评测结果。
 
@@ -30,6 +32,8 @@ paper-agent serve
 ```powershell
 paper-agent run "科研智能体" --demo --fixture examples/demo_papers.json
 ```
+
+也可以先打开 [Asteria Observatory](https://asteria-observatory.vercel.app/app) 浏览完整研究样例。公开站是只读评估环境：不接受 API Key、不保存修改，也不代替本地工作台。
 
 ## 它解决什么问题
 
@@ -156,10 +160,10 @@ Python 3.11+。
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
-# CLI、数据库和学术检索
+# CLI、数据库、Web API 和学术检索
 python -m pip install -e .
 
-# 包含 REST API 与 PDF 全文
+# 再加入 PDF 全文解析
 python -m pip install -e ".[all]"
 
 Copy-Item .env.example .env
@@ -178,6 +182,8 @@ paper-agent run "科研智能体" `
 这会使用明确标注的合成论文，只用于验证软件流程。
 
 ## Web 工作台
+
+公开只读演示：[asteria-observatory.vercel.app](https://asteria-observatory.vercel.app/app)。它在每个 Vercel Function 实例中生成相同的确定性研究样例，服务端拒绝所有写请求；Vercel 的临时文件系统不用于承诺研究数据持久化。完整研究、模型连接、全文和项目导出请运行本地版本。
 
 安装完整依赖并启动：
 

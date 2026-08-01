@@ -5,9 +5,10 @@ import {
   Plus,
   Sparkles
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { api } from "../api/client";
 import type { Project, Run } from "../api/types";
+import { PUBLIC_DEMO } from "../deployment";
 import { EvidenceSignal } from "../components/EvidenceSignal";
 import { RunStageRail } from "../components/RunStageRail";
 import {
@@ -64,17 +65,21 @@ export function DashboardPage() {
     <div className="dashboard page-pad">
       <header className="dashboard-hero">
         <div className="dashboard-hero__copy">
-          <span className="dashboard-hero__kicker">Asteria / 证据控制台</span>
-          <h1>证据走到哪一步？</h1>
+          <span className="dashboard-hero__kicker">
+            Asteria Observatory / CS Evidence
+          </span>
+          <h1>把检索，变成可复核的证据。</h1>
           <p>
             {activeJobs.length > 0
               ? `${activeJobs.length} 个研究任务正在运行`
               : pending > 0
                 ? `${pending} 篇候选论文正在等待人工判断。`
-                : "所有研究门禁都已处理，可以启动新的检索或复核证据。"}
+                : "从研究问题到最终报告，每一步都保留来源、判断与可恢复状态。"}
           </p>
           <div className="dashboard-hero__actions">
             <Button
+              disabled={PUBLIC_DEMO}
+              title={PUBLIC_DEMO ? "公开观测站为只读样例" : undefined}
               onClick={() =>
                 navigate("/projects?new=1", { viewTransition: true })
               }
@@ -123,9 +128,9 @@ export function DashboardPage() {
 
       <section className="dashboard-section">
         <SectionTitle
-          eyebrow="Research ledger"
-          title="最近更新的研究"
-          detail="每一行都是独立、可恢复的研究档案。"
+          eyebrow="Evidence ledger"
+          title="继续最近的研究"
+          detail="从上次停下的位置继续；每个判断都有出处。"
           action={
             <Link className="text-link" to="/projects" viewTransition>
               全部项目 <ArrowRight size={14} />
