@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f6f61.svg)](LICENSE)
 
-[![Version](https://img.shields.io/badge/version-0.10.0-175cd3.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.11.0-246bfd.svg)](CHANGELOG.md)
 
 ![Asteria 工作台](docs/assets/asteria-workbench.png)
 
@@ -186,7 +186,7 @@ python -m pip install -e ".[all]"
 paper-agent serve
 ```
 
-打开 [http://127.0.0.1:8765/app](http://127.0.0.1:8765/app)。Web 前端已经包含在 Python 安装包中，提供项目概览、模型连接、Agent 选择、项目证据对话、跨项目文献入口、RIS/BibTeX/CSL JSON 导入、三栏文献库、逐篇筛选、运行事件、证据与复现矩阵、文献图谱、报告审计和全文检索。项目页用“方案 → 检索 → 筛选 → 证据 → 报告”的证据脊柱显示当前人工门与下一步，而不是只给出一个模糊完成百分比。
+打开 [http://127.0.0.1:8765/app](http://127.0.0.1:8765/app)。Web 前端已经包含在 Python 安装包中，提供项目概览、模型连接、Agent 选择、项目证据对话、跨项目文献入口、RIS/BibTeX/CSL JSON 导入、三栏文献库、逐篇筛选、运行事件、证据与复现矩阵、文献图谱、报告审计和全文检索。首页用真实项目阶段生成五通道证据信号谱，项目页再用“方案 → 检索 → 筛选 → 证据 → 报告”的证据脊柱显示当前人工门与下一步，而不是虚构实时活动或只给出模糊完成百分比。
 
 前端不是单一聊天框。交互借鉴 Zotero 的文献列表/检查器、ASReview 的人工筛选流和 Open Knowledge Maps 的图谱联动，详细说明见 [Web 工作台](docs/WEB.md)。
 

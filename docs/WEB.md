@@ -81,13 +81,17 @@ pnpm ui:record
 - [Open WebUI](https://github.com/open-webui/open-webui)：基础模型与 Agent 配置分层。
 - [LibreChat](https://github.com/danny-avila/LibreChat)：连接/Agent 选择和会话切换。
 - [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm)：workspace 绑定文档与对话。
+- [OpenScience](https://github.com/synthetic-sciences/openscience)：科学工作台把文件、会话、实验与来源保留在可操作 workspace，而非营销式首页。
+- [React Router View Transitions](https://reactrouter.com/how-to/view-transitions)：使用现有路由器的原生页面过渡，不再引入一套并行动画状态。
+- [MDN View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API)：过渡用于保持导航上下文、降低感知等待，不承担装饰任务。
+- [MDN prefers-reduced-motion](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/%40media/prefers-reduced-motion)：系统减少动态偏好是验收要求，不是可选优化。
 
-界面刻意避免把所有内容放进相同卡片，也不使用渐变、网格背景、巨幅宣传文案、虚构实时思维链或单一聊天窗口。视觉采用深石墨导航、冷灰蓝工作区、研究纸张式内容面、细边框和紧凑列表，强调“研究工具”而不是“AI 展示页”。首页的研究账本与项目页的证据脊柱是整套界面的识别元素。
+界面刻意避免把所有内容放进相同卡片，也不使用满屏渐变、霓虹网格、玻璃拟态、装饰粒子、巨幅宣传文案、虚构实时思维链或单一聊天窗口。视觉采用深石墨导航、冷灰蓝工作区、研究纸张式内容面、细边框和紧凑列表，强调“研究工具”而不是“AI 展示页”。首页的证据信号谱、研究账本与项目页证据脊柱是整套界面的识别元素。
 
 ### 视觉约束
 
 - 正文基准字号为 15px；输入框最小高度 42px、字号 14px；小于 11px 的文字仅用于短 ID 或时间戳。
-- 中文正文采用 Segoe UI Variable 等系统 UI 字体，窄体标题优先使用 Bahnschrift；等宽字体只用于代码、论文 ID、运行 ID 和短数据。
+- 中文标题与正文采用 Segoe UI Variable Display、微软雅黑 UI 等系统字体；Bahnschrift 与等宽字体只用于数字、代码、论文 ID、运行 ID 和短仪器标签。
 - 英文眉题只作短小的栏目索引，不承担主标题；说明文字只在帮助决策时保留。
 - 常规圆角统一为 5–7px；胶囊只用于状态或标签；阴影只用于模态框和移动导航。
 - 工作台是项目与待办入口，不承担营销落地页功能。
@@ -107,7 +111,16 @@ pnpm ui:record
 3. 浅色内容面：列表、统计、设置面板和检查器。
 4. 白色抬升面：输入框、对话消息与需要模拟纸张的报告。
 
-这种分层减少整屏纯白带来的眩光，同时不依赖渐变、玻璃拟态或装饰阴影。
+这种分层减少整屏纯白带来的眩光；渐变只用于证据信号和状态线，不用作整页装饰，也不依赖玻璃拟态或大面积阴影。
+
+### 动态语法
+
+- 证据信号谱的五个通道完全由项目当前阶段计算；它是状态摘要，不是装饰波形。
+- 信号线在首次进入时绘制一次，扫描器只经过一次；只有 `queued` 或 `running` 的真实阶段持续呼吸。
+- 页面导航使用 React Router 的 `viewTransition`，工作区轻微淡入位移，固定侧栏不参与动画。
+- 悬停只改变 1–3px 位移、状态线和箭头，不使用大幅缩放、弹跳或鼠标跟随特效。
+- `prefers-reduced-motion: reduce` 会把 CSS 动画、过渡与 View Transition 压缩为近零时长；Playwright 排练读取计算样式验证该规则。
+- 动画主要使用 `transform` 和 `opacity`；SVG 描边与扫描只在载入时短暂运行，避免长期占用绘制资源。
 
 ## 安全
 

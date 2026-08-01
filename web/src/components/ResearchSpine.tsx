@@ -54,9 +54,13 @@ export function ResearchSpine({ project }: { project: Project }) {
     }
   ];
   const activeIndex = phases.findIndex((phase) => !phase.complete);
+  const isLive = ["queued", "running"].includes(latest?.status ?? "");
 
   return (
-    <ol className="research-spine" aria-label="研究证据链进度">
+    <ol
+      className={`research-spine ${isLive ? "is-live" : ""}`}
+      aria-label="研究证据链进度"
+    >
       {phases.map((phase, index) => {
         const state = phase.complete
           ? "complete"

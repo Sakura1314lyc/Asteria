@@ -123,6 +123,20 @@ async function navigate(page, url) {
 async function explore(page, routes) {
   await navigate(page, `${BASE_URL}/app`);
   await dumpPage(page, '/app');
+  await page.waitForTimeout(1500);
+  await page.screenshot({
+    path: path.join(OUTPUT_DIR, 'dashboard-stable.png'),
+    fullPage: true
+  });
+  const firstProject = page.locator('.research-ledger__row').first();
+  if (await firstProject.isVisible().catch(() => false)) {
+    await firstProject.hover();
+    await page.waitForTimeout(220);
+    await page.screenshot({
+      path: path.join(OUTPUT_DIR, 'dashboard-hover.png'),
+      fullPage: true
+    });
+  }
   if (routes.projectUrl) {
     await navigate(page, routes.projectUrl);
     await dumpPage(page, '/app/projects/:projectId');
@@ -170,6 +184,15 @@ async function rehearse(page, routes) {
   if (!mobileFitsViewport) console.error('REHEARSAL FAIL: mobile horizontal overflow');
   else console.log('REHEARSAL OK: mobile viewport has no horizontal overflow');
   passed = mobileFitsViewport && passed;
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await navigate(page, `${BASE_URL}/app`);
+  const reducedMotionApplied = await page.locator('.evidence-signal__trace').evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).animationDuration) <= 0.01
+  );
+  if (!reducedMotionApplied) console.error('REHEARSAL FAIL: reduced motion preference');
+  else console.log('REHEARSAL OK: reduced motion preference disables signal animation');
+  passed = reducedMotionApplied && passed;
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   if (!passed) throw new Error('REHEARSAL FAILED — fix selectors before recording');
   console.log('REHEARSAL PASSED — all selectors verified');
 }
@@ -211,12 +234,20 @@ async function record(page, routes) {
       : {})
   });
   const page = await context.newPage();
+  const browserErrors = [];
+  page.on('pageerror', (error) => browserErrors.push(`page: ${error.message}`));
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`);
+  });
   const video = page.video();
   try {
     const routes = await projectRoutes();
     if (MODE === 'explore') await explore(page, routes);
     if (MODE === 'rehearse') await rehearse(page, routes);
     if (MODE === 'record') await record(page, routes);
+    if (browserErrors.length) {
+      throw new Error(`Browser errors detected:\n${browserErrors.join('\n')}`);
+    }
   } finally {
     await context.close();
     if (video) {

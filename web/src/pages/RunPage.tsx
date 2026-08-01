@@ -115,7 +115,7 @@ export function RunPage() {
 
   return (
     <div className="run-page">
-      <Link className="back-link" to={`/projects/${project.id}`}>
+      <Link className="back-link" to={`/projects/${project.id}`} viewTransition>
         <ArrowLeft size={14} /> 返回项目
       </Link>
       <SectionTitle

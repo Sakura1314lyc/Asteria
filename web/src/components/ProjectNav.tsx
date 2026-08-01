@@ -56,6 +56,7 @@ export function ProjectNav({ projectId }: { projectId: string }) {
           key={segment}
           to={`/projects/${projectId}${segment ? `/${segment}` : ""}`}
           end={end}
+          viewTransition
           className={({ isActive }) => (isActive ? "is-active" : "")}
         >
           <Icon size={15} />

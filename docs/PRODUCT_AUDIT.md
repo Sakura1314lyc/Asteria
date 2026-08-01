@@ -4,6 +4,37 @@
 
 > 本文件按时间保留审计轨迹。早期章节中的“暂无”与“下一阶段”是当时快照；判断当前能力时，以 README、路线图和靠前的最新审计为准。
 
+## 2026-08 动态证据信号与科技感复审
+
+### 新增参考
+
+- [OpenScience](https://github.com/synthetic-sciences/openscience)：科学 Agent 的浏览器界面应表现为真实 workspace，把会话、文件、实验和来源组织成可操作对象。
+- [React Router View Transitions](https://reactrouter.com/how-to/view-transitions)：现有 `Link`、`NavLink` 和编程式导航可以直接启用浏览器 View Transition，不需要复制路由状态。
+- [MDN View Transition API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API)：页面过渡的价值是保持上下文和降低感知等待，同时仍需处理焦点、阅读位置与交互边界。
+- [Motion layout animation](https://motion.dev/docs/react-layout-animations)：布局动效优先使用 transform，避免通过持续改变布局属性制造卡顿；本轮未为少量微交互引入额外运行时依赖。
+- [MDN prefers-reduced-motion](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/%40media/prefers-reduced-motion)：动态界面必须响应操作系统的减少动态偏好。
+
+### 两遍设计结论
+
+第一遍曾考虑霓虹网格、玻璃卡片和背景粒子，但这些元素与证据审计没有关系，也容易
+复刻通用 AI 产品模板。第二遍把唯一视觉风险集中到“证据信号谱”：五个通道直接由
+真实项目阶段计算，加载扫描只执行一次，持续脉冲只表示真实的排队或运行状态。
+
+| 级别 | 问题 | 影响 | 处理 |
+|---|---|---|---|
+| P0 | 冷灰画布与规则分隔虽清晰，但缺少只属于科研证据链的识别元素 | 仍可能被看成普通后台管理页 | 首页新增真实五阶段证据信号谱，用深色仪器面形成单一视觉签名 |
+| P1 | 为“科技感”直接增加循环波形会虚构系统活动 | 用户可能误判研究正在运行 | 扫描只在载入时出现；只有真实 `queued/running` 阶段持续呼吸 |
+| P1 | Bahnschrift 承担全部标题，中文与混排显得过窄、过硬 | 中文标题阅读节奏不自然 | 中文标题改为系统 Display 字体，窄体与等宽字体只保留给数据和 ID |
+| P1 | 页面切换瞬间跳变，固定侧栏与研究上下文割裂 | 深层项目导航感知不连续 | 主要 Link/NavLink 使用原生 View Transition，仅工作区轻微淡入位移 |
+| P0 | 新动效若不尊重减少动态偏好，会形成可访问性回归 | 部分用户无法舒适使用 | 全局 reduced-motion 规则覆盖 CSS 与 View Transition，排练读取计算样式断言 |
+| P2 | 新仪器面板可能挤压 390px 布局 | 手机出现横向滚动或按钮过窄 | 改为单列信号面板，排练断言文档宽度不超过视口 |
+
+### 验收结论
+
+真实合成 QA 项目在 1440×900 和 390×844 下完成探索与排练。证据信号、研究档案
+悬停、项目证据脊柱、运行台和检索账本均可见；移动端无横向溢出；模拟
+`prefers-reduced-motion: reduce` 后信号动画计算时长不超过 0.01 秒。
+
 ## 2026-08 研究工作台、仓库入口与演示验收
 
 ### 新增参考

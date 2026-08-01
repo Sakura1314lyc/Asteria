@@ -8,6 +8,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { Project, Run } from "../api/types";
+import { EvidenceSignal } from "../components/EvidenceSignal";
 import { RunStageRail } from "../components/RunStageRail";
 import {
   Button,
@@ -63,8 +64,8 @@ export function DashboardPage() {
     <div className="dashboard page-pad">
       <header className="dashboard-hero">
         <div className="dashboard-hero__copy">
-          <span className="dashboard-hero__kicker">Asteria / research desk</span>
-          <h1>今天从哪一步继续？</h1>
+          <span className="dashboard-hero__kicker">Asteria / 证据控制台</span>
+          <h1>证据走到哪一步？</h1>
           <p>
             {activeJobs.length > 0
               ? `${activeJobs.length} 个研究任务正在运行`
@@ -72,15 +73,23 @@ export function DashboardPage() {
                 ? `${pending} 篇候选论文正在等待人工判断。`
                 : "所有研究门禁都已处理，可以启动新的检索或复核证据。"}
           </p>
+          <div className="dashboard-hero__actions">
+            <Button
+              onClick={() =>
+                navigate("/projects?new=1", { viewTransition: true })
+              }
+            >
+              <Plus size={16} /> 新建研究
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => navigate("/projects", { viewTransition: true })}
+            >
+              全部项目
+            </Button>
+          </div>
         </div>
-        <div className="dashboard-hero__actions">
-          <Button onClick={() => navigate("/projects?new=1")}>
-            <Plus size={16} /> 新建研究
-          </Button>
-          <Button variant="secondary" onClick={() => navigate("/projects")}>
-            全部项目
-          </Button>
-        </div>
+        <EvidenceSignal projects={items} />
       </header>
 
       <section className="metric-ribbon dashboard-summary" aria-label="研究状态摘要">
@@ -98,6 +107,7 @@ export function DashboardPage() {
         <Link
           className="attention-strip"
           to={`/projects/${priorityProject.id}/screening`}
+          viewTransition
         >
           <BookCheck size={19} />
           <div>
@@ -117,7 +127,7 @@ export function DashboardPage() {
           title="最近更新的研究"
           detail="每一行都是独立、可恢复的研究档案。"
           action={
-            <Link className="text-link" to="/projects">
+            <Link className="text-link" to="/projects" viewTransition>
               全部项目 <ArrowRight size={14} />
             </Link>
           }
@@ -128,7 +138,11 @@ export function DashboardPage() {
             detail="创建项目后，可以先使用内置合成语料跑通完整流程，再接入真实模型与检索源。"
             icon={<Sparkles size={23} />}
             action={
-              <Button onClick={() => navigate("/projects?new=1")}>
+              <Button
+                onClick={() =>
+                  navigate("/projects?new=1", { viewTransition: true })
+                }
+              >
                 创建研究项目
               </Button>
             }
@@ -142,6 +156,7 @@ export function DashboardPage() {
                   to={`/projects/${project.id}`}
                   className="research-ledger__row"
                   key={project.id}
+                  viewTransition
                 >
                   <span className="research-ledger__index">
                     {String(index + 1).padStart(2, "0")}

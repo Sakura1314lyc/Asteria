@@ -53,7 +53,9 @@ export function ProjectOverviewPage() {
     onSuccess: async ({ run_id }) => {
       await queryClient.invalidateQueries({ queryKey: ["project", project.id] });
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
-      navigate(`/projects/${project.id}/runs/${run_id}`);
+      navigate(`/projects/${project.id}/runs/${run_id}`, {
+        viewTransition: true
+      });
     }
   });
   const latest = project.runs?.[0];
@@ -128,7 +130,7 @@ export function ProjectOverviewPage() {
             <Play size={16} /> 启动新一轮研究
           </Button>
           {!demo && availableConnections.length === 0 && (
-            <Link className="text-link" to="/settings">
+            <Link className="text-link" to="/settings" viewTransition>
               先接入模型 API
             </Link>
           )}
@@ -166,6 +168,7 @@ export function ProjectOverviewPage() {
                   to={`/projects/${project.id}/runs/${run.id}`}
                   className="run-list__item"
                   key={run.id}
+                  viewTransition
                 >
                   <div className="run-list__heading">
                     <code>{run.id.slice(-8)}</code>
@@ -207,7 +210,7 @@ export function ProjectOverviewPage() {
             </dl>
           </section>
           <div className="quick-links">
-            <Link to={`/projects/${project.id}/screening`}>
+            <Link to={`/projects/${project.id}/screening`} viewTransition>
               <FileSearch size={17} />
               <span>
                 <strong>继续人工筛选</strong>
@@ -215,7 +218,7 @@ export function ProjectOverviewPage() {
               </span>
               <ArrowRight size={15} />
             </Link>
-            <Link to={`/projects/${project.id}/evidence`}>
+            <Link to={`/projects/${project.id}/evidence`} viewTransition>
               <ShieldCheck size={17} />
               <span>
                 <strong>检查复现证据</strong>
@@ -224,7 +227,7 @@ export function ProjectOverviewPage() {
               <ArrowRight size={15} />
             </Link>
             {latest?.status === "completed" && (
-              <Link to={`/projects/${project.id}/reports`}>
+              <Link to={`/projects/${project.id}/reports`} viewTransition>
                 <Beaker size={17} />
                 <span>
                   <strong>阅读最新综合</strong>

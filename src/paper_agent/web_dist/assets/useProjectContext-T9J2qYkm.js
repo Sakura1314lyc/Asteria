@@ -1,1 +1,0 @@
-import{b as e}from"./index-BBEaibMq.js";function t(){return e()}export{t};

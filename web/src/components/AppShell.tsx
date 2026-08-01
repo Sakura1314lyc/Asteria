@@ -42,7 +42,7 @@ export function AppShell() {
             type="button"
             className="new-project"
             onClick={() => {
-              navigate("/projects?new=1");
+              navigate("/projects?new=1", { viewTransition: true });
               setMobileOpen(false);
             }}
           >
@@ -57,6 +57,7 @@ export function AppShell() {
               key={to}
               to={to}
               end={to === "/"}
+              viewTransition
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) => (isActive ? "is-active" : "")}
             >
@@ -69,7 +70,7 @@ export function AppShell() {
           <span className="local-dot" aria-hidden="true" />
           <span>
             <strong>本地工作区</strong>
-            <small>数据留在此设备 · v0.10.0</small>
+            <small>数据留在此设备 · v0.11.0</small>
           </span>
         </footer>
       </aside>
