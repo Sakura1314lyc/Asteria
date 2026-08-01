@@ -379,7 +379,7 @@ class FullTextScreeningTests(unittest.TestCase):
                 version = connection.execute(
                     "SELECT version FROM schema_meta"
                 ).fetchone()["version"]
-            self.assertEqual(version, 5)
+            self.assertEqual(version, 6)
             self.assertIn("retrieval_status", project_columns)
             self.assertIn("fulltext_exclusion_code", project_columns)
             self.assertIn("fulltext_enabled", config_columns)

@@ -305,7 +305,7 @@ class DualScreeningTests(unittest.TestCase):
                 version = connection.execute(
                     "SELECT version FROM schema_meta"
                 ).fetchone()["version"]
-            self.assertEqual(version, 5)
+            self.assertEqual(version, 6)
             self.assertEqual(
                 migrated.list_project_papers(project.id)[0]["screening_status"],
                 "included",

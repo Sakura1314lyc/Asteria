@@ -7,13 +7,15 @@ import {
   FileDown,
   FlaskConical,
   Play,
-  ScrollText
+  ScrollText,
+  Trash2
 } from "lucide-react";
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { api, apiUrl } from "../api/client";
 import { RunStageRail } from "../components/RunStageRail";
 import { SearchLedger } from "../components/SearchLedger";
+import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import {
   Button,
   ErrorState,
@@ -22,6 +24,7 @@ import {
   StatusBadge
 } from "../components/Ui";
 import { useProjectContext } from "../hooks/useProjectContext";
+import { PUBLIC_DEMO } from "../deployment";
 
 const eventStageNames: Record<string, string> = {
   initialized: "初始化",
@@ -45,6 +48,8 @@ export function RunPage() {
   const { project } = useProjectContext();
   const { runId = "" } = useParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [agentId, setAgentId] = useState("");
   const [connectionId, setConnectionId] = useState("");
   const run = useQuery({
@@ -106,6 +111,27 @@ export function RunPage() {
       await queryClient.invalidateQueries({ queryKey: ["project", project.id] });
     }
   });
+  const remove = useMutation({
+    mutationFn: () => api.deleteRun(runId),
+    onMutate: async () => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ["run", runId] }),
+        queryClient.cancelQueries({ queryKey: ["events", runId] }),
+        queryClient.cancelQueries({ queryKey: ["artifacts", runId] }),
+        queryClient.cancelQueries({ queryKey: ["research", runId] })
+      ]);
+    },
+    onSuccess: async () => {
+      navigate(`/projects/${project.id}`, {
+        replace: true,
+        viewTransition: true
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["project", project.id] }),
+        queryClient.invalidateQueries({ queryKey: ["projects"] })
+      ]);
+    }
+  });
 
   if (run.isLoading) return <LoadingState label="正在读取运行状态" />;
   if (run.isError || !run.data) {
@@ -122,7 +148,28 @@ export function RunPage() {
         eyebrow={`Run ${runId.slice(-10)}`}
         title="研究流水线"
         detail={`创建于 ${new Date(data.created_at).toLocaleString("zh-CN")}`}
-        action={<StatusBadge status={data.status}>{data.status}</StatusBadge>}
+        action={
+          <div className="run-title-actions">
+            <StatusBadge status={data.status}>{data.status}</StatusBadge>
+            <Button
+              variant="quiet"
+              size="small"
+              disabled={
+                PUBLIC_DEMO || ["queued", "running"].includes(data.status)
+              }
+              title={
+                PUBLIC_DEMO
+                  ? "公开观测站为只读模式"
+                  : ["queued", "running"].includes(data.status)
+                    ? "运行结束后才能删除"
+                    : undefined
+              }
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 size={14} /> 删除运行
+            </Button>
+          </div>
+        }
       />
 
       <section className="run-console">
@@ -275,6 +322,22 @@ export function RunPage() {
           </div>
         </section>
       )}
+      <ConfirmDeleteModal
+        open={deleteOpen}
+        title="删除这次研究运行？"
+        description={`运行事件、${data.status === "completed" ? "报告版本和" : ""}磁盘产物都会被清除，项目本身与已导入论文仍会保留。`}
+        expected={runId}
+        label="输入完整 Run ID"
+        pending={remove.isPending}
+        error={remove.error}
+        onClose={() => {
+          if (!remove.isPending) {
+            setDeleteOpen(false);
+            remove.reset();
+          }
+        }}
+        onConfirm={() => remove.mutate()}
+      />
     </div>
   );
 }

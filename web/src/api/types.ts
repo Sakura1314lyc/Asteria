@@ -79,6 +79,12 @@ export interface Project {
   runs?: Run[];
   reports?: ReportRecord[];
   documents?: DocumentRecord[];
+  events?: Array<{
+    id: number;
+    timestamp: string;
+    event_type: string;
+    payload: Record<string, unknown>;
+  }>;
 }
 
 export interface Paper {

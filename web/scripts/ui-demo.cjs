@@ -146,6 +146,9 @@ async function explore(page, routes) {
   if (routes.projectUrl) {
     await navigate(page, routes.projectUrl);
     await dumpPage(page, '/app/projects/:projectId');
+    if (process.env.QA_LIFECYCLE === '1') {
+      await exploreLifecycleControls(page, routes);
+    }
   }
   if (routes.runUrl) {
     await navigate(page, routes.runUrl);
@@ -163,6 +166,78 @@ async function explore(page, routes) {
     path: path.join(OUTPUT_DIR, 'mobile-navigation.png'),
     fullPage: false
   });
+  if (process.env.QA_LIFECYCLE === '1' && routes.projectUrl) {
+    await navigate(page, routes.projectUrl);
+    const edit = page.getByRole('button', { name: '编辑项目' });
+    if (await edit.isEnabled().catch(() => false)) {
+      await edit.click();
+      await page.screenshot({
+        path: path.join(OUTPUT_DIR, 'mobile-project-edit.png'),
+        fullPage: false
+      });
+      const mobileDialogFits = await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      );
+      if (!mobileDialogFits) {
+        throw new Error('Lifecycle modal overflows the mobile viewport');
+      }
+      await page.getByRole('button', { name: '关闭' }).click();
+    }
+  }
+}
+
+async function exploreLifecycleControls(page, routes) {
+  const edit = page.getByRole('button', { name: '编辑项目' });
+  if (await edit.isEnabled().catch(() => false)) {
+    await edit.click();
+    await page.screenshot({
+      path: path.join(OUTPUT_DIR, 'project-edit.png'),
+      fullPage: false
+    });
+    await page.getByRole('button', { name: '删除项目' }).click();
+    await page.screenshot({
+      path: path.join(OUTPUT_DIR, 'project-delete-confirmation.png'),
+      fullPage: false
+    });
+    await page.getByRole('button', { name: '关闭' }).click();
+  }
+
+  await navigate(page, `${routes.projectUrl}/documents`);
+  const deleteDocument = page.getByRole('button', { name: /^删除全文 / }).first();
+  if (await deleteDocument.isEnabled().catch(() => false)) {
+    await deleteDocument.click();
+    await page.screenshot({
+      path: path.join(OUTPUT_DIR, 'document-delete-confirmation.png'),
+      fullPage: false
+    });
+    await page.getByRole('button', { name: '取消' }).click();
+  }
+
+  await navigate(page, `${routes.projectUrl}/chat`);
+  const deleteConversation = page
+    .getByRole('button', { name: /^删除对话 / })
+    .first();
+  if (await deleteConversation.isEnabled().catch(() => false)) {
+    await deleteConversation.click();
+    await page.screenshot({
+      path: path.join(OUTPUT_DIR, 'conversation-delete-confirmation.png'),
+      fullPage: false
+    });
+    await page.getByRole('button', { name: '取消' }).click();
+  }
+
+  if (routes.runUrl) {
+    await navigate(page, routes.runUrl);
+    const deleteRun = page.getByRole('button', { name: '删除运行' });
+    if (await deleteRun.isEnabled().catch(() => false)) {
+      await deleteRun.click();
+      await page.screenshot({
+        path: path.join(OUTPUT_DIR, 'run-delete-confirmation.png'),
+        fullPage: false
+      });
+      await page.getByRole('button', { name: '取消' }).click();
+    }
+  }
 }
 
 async function rehearse(page, routes) {
@@ -175,13 +250,15 @@ async function rehearse(page, routes) {
     passed = (await ensureVisible(page, '.project-masthead h1', 'project identity')) && passed;
     passed = (await ensureVisible(page, '.research-spine', 'research evidence spine')) && passed;
     passed = (await ensureVisible(page, '.run-list__item', 'run history entry')) && passed;
+    passed = (await ensureVisible(page, '.project-manage-line', 'project lifecycle controls')) && passed;
   }
   if (routes.runUrl) {
     await navigate(page, routes.runUrl);
     passed = (await ensureVisible(page, '.run-console', 'run activity console')) && passed;
     passed = (await ensureVisible(page, '.search-ledger', 'search provenance ledger')) && passed;
+    passed = (await ensureVisible(page, '.run-title-actions', 'run lifecycle controls')) && passed;
   }
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 375, height: 812 });
   await navigate(page, `${BASE_URL}/app`);
   passed = (await ensureVisible(page, '.mobile-menu', 'mobile navigation control')) && passed;
   const mobileFitsViewport = await page.evaluate(
@@ -190,6 +267,26 @@ async function rehearse(page, routes) {
   if (!mobileFitsViewport) console.error('REHEARSAL FAIL: mobile horizontal overflow');
   else console.log('REHEARSAL OK: mobile viewport has no horizontal overflow');
   passed = mobileFitsViewport && passed;
+
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '125%';
+  });
+  const enlargedTextFitsViewport = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth
+  );
+  if (!enlargedTextFitsViewport) console.error('REHEARSAL FAIL: enlarged text causes horizontal overflow');
+  else console.log('REHEARSAL OK: enlarged text preserves the mobile viewport');
+  passed = enlargedTextFitsViewport && passed;
+
+  await page.setViewportSize({ width: 844, height: 390 });
+  await navigate(page, `${BASE_URL}/app`);
+  const landscapeFitsViewport = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth
+  );
+  if (!landscapeFitsViewport) console.error('REHEARSAL FAIL: landscape horizontal overflow');
+  else console.log('REHEARSAL OK: landscape viewport has no horizontal overflow');
+  passed = landscapeFitsViewport && passed;
+
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await navigate(page, `${BASE_URL}/app`);
   const reducedMotionApplied = await page.locator('.evidence-signal__trace').evaluate(
@@ -227,6 +324,51 @@ async function record(page, routes) {
   await showSubtitle(page, '');
 }
 
+async function exerciseLifecycle(page, routes) {
+  if (!routes.projectUrl || !routes.runUrl) {
+    throw new Error('Lifecycle mutation QA requires project and run URLs');
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await navigate(page, routes.projectUrl);
+  await page.getByRole('button', { name: '编辑项目' }).click();
+  const editedName = 'CRUD 生命周期验收（已编辑）';
+  await page.getByLabel('项目名称').fill(editedName);
+  await page.getByRole('button', { name: '保存修改' }).click();
+  await page.getByRole('heading', { name: editedName }).waitFor();
+
+  await navigate(page, `${routes.projectUrl}/documents`);
+  const documentRow = page.locator('.document-row-shell').first();
+  const filename = (await documentRow.locator('strong').textContent())?.trim() || '';
+  await documentRow.getByRole('button', { name: /^删除全文 / }).click();
+  await page.locator('.modal input').fill(filename);
+  await page.getByRole('button', { name: '确认删除' }).click();
+  await documentRow.waitFor({ state: 'detached' });
+
+  await navigate(page, `${routes.projectUrl}/chat`);
+  const thread = page.locator('.chat-thread-row').first();
+  const threadTitle = (await thread.locator('strong').textContent())?.trim() || '';
+  await thread.getByRole('button', { name: /^删除对话 / }).click();
+  await page.locator('.modal input').fill(threadTitle);
+  await page.getByRole('button', { name: '确认删除' }).click();
+  await thread.waitFor({ state: 'detached' });
+
+  await navigate(page, routes.runUrl);
+  await page.getByRole('button', { name: '删除运行' }).click();
+  await page.locator('.modal input').fill(routes.runUrl.split('/').pop());
+  await page.getByRole('button', { name: '确认删除' }).click();
+  await page.waitForURL(routes.projectUrl);
+
+  await page.getByRole('button', { name: '编辑项目' }).click();
+  await page.getByRole('button', { name: '删除项目' }).click();
+  await page.locator('.modal input').fill(editedName);
+  await page.getByRole('button', { name: '永久删除' }).click();
+  await page.waitForURL(`${BASE_URL}/app/projects`);
+  if (await page.getByText(editedName, { exact: true }).isVisible().catch(() => false)) {
+    throw new Error('Deleted project is still visible after lifecycle QA');
+  }
+  console.log('LIFECYCLE QA PASSED — edit and granular deletion workflow verified');
+}
+
 (async () => {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   const browser = await chromium.launch({
@@ -261,6 +403,9 @@ async function record(page, routes) {
     if (MODE === 'explore') await explore(page, routes);
     if (MODE === 'rehearse') await rehearse(page, routes);
     if (MODE === 'record') await record(page, routes);
+    if (process.env.QA_LIFECYCLE_MUTATE === '1') {
+      await exerciseLifecycle(page, routes);
+    }
     if (browserErrors.length) {
       throw new Error(`Browser errors detected:\n${browserErrors.join('\n')}`);
     }

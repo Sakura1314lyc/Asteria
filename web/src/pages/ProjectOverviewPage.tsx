@@ -15,6 +15,7 @@ import { Link, useNavigate } from "react-router";
 import { api, apiUrl } from "../api/client";
 import { RunStageRail } from "../components/RunStageRail";
 import { ResearchSpine } from "../components/ResearchSpine";
+import { ProjectManager } from "../components/ProjectManager";
 import {
   Button,
   reviewTypeLabel,
@@ -70,7 +71,10 @@ export function ProjectOverviewPage() {
     <div className="overview-page">
       <section className="overview-lead">
         <div>
-          <span className="eyebrow">研究问题</span>
+          <div className="overview-lead__context">
+            <span className="eyebrow">研究问题</span>
+            <ProjectManager project={project} />
+          </div>
           <h2>{project.research_question}</h2>
           <p>{project.topic}</p>
         </div>

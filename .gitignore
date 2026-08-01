@@ -10,6 +10,7 @@ build/
 *.egg-info/
 runs/
 .paper-agent/
+.tmp/
 web/node_modules/
 web/artifacts/
 web/*.tsbuildinfo

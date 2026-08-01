@@ -153,6 +153,48 @@ class ConnectionRegistry:
             if self._connections.pop(connection_id, None) is None:
                 raise ConnectionError("连接不存在或服务已重启")
 
+    def update(
+        self,
+        connection_id: str,
+        *,
+        name: str,
+        base_url: str,
+        model: str,
+        api_format: str,
+        api_key: str = "",
+    ) -> dict[str, object]:
+        if connection_id == "env-openai":
+            raise ConnectionError("环境变量连接不能从 Web 修改")
+        cleaned_name = name.strip()
+        cleaned_model = model.strip()
+        if not cleaned_name or len(cleaned_name) > 100:
+            raise ConnectionError("连接名称长度应为 1–100 个字符")
+        if not cleaned_model or len(cleaned_model) > 200:
+            raise ConnectionError("模型名称长度应为 1–200 个字符")
+        if api_format not in self.FORMATS:
+            raise ConnectionError("不支持的 API 格式")
+        cleaned_base_url = validate_base_url(base_url)
+        provider, effective_format, structured_output, notice = (
+            infer_connection_protocol(cleaned_base_url, api_format)
+        )
+        with self._lock:
+            existing = self._connections.get(connection_id)
+            if existing is None:
+                raise ConnectionError("连接不存在或服务已重启")
+            updated = replace(
+                existing,
+                name=cleaned_name,
+                base_url=cleaned_base_url,
+                model=cleaned_model,
+                api_format=effective_format,
+                provider=provider,
+                structured_output=structured_output,
+                notice=notice,
+                api_key=api_key.strip() or existing.api_key,
+            )
+            self._connections[connection_id] = updated
+        return updated.public_dict()
+
     def resolve(self, connection_id: str | None) -> ModelConnection:
         if not connection_id or connection_id == "env-openai":
             connection = self._environment_connection()

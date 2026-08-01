@@ -114,6 +114,21 @@ export const api = {
       { method: "DELETE" }
     ),
 
+  updateConnection: (
+    connectionId: string,
+    payload: {
+      name: string;
+      base_url: string;
+      model: string;
+      api_format: "responses" | "chat_completions";
+      api_key: string;
+    }
+  ) =>
+    request<ModelConnection>(`/connections/${encodeURIComponent(connectionId)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    }),
+
   testConnection: (connectionId: string) =>
     request<{ ok: boolean; model: string; api_format: string }>(
       `/connections/${encodeURIComponent(connectionId)}/test`,
@@ -143,6 +158,35 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 
+  updateProject: (
+    projectId: string,
+    payload: {
+      name?: string;
+      topic?: string;
+      research_question?: string;
+      review_type?: string;
+      language?: string;
+    }
+  ) =>
+    request<Project>(`/projects/${encodeURIComponent(projectId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    }),
+
+  deleteProject: (projectId: string, confirmation: string) =>
+    request<{
+      deleted: boolean;
+      project_id: string;
+      runs: number;
+      documents: number;
+      papers: number;
+      conversations: number;
+      files_removed: boolean;
+    }>(
+      `/projects/${encodeURIComponent(projectId)}${queryString({ confirmation })}`,
+      { method: "DELETE" }
+    ),
+
   updateProtocol: (projectId: string, protocol: ReviewProtocol) =>
     request<Project>(`/projects/${encodeURIComponent(projectId)}/protocol`, {
       method: "PUT",
@@ -168,6 +212,18 @@ export const api = {
 
   getRun: (runId: string) =>
     request<Run>(`/runs/${encodeURIComponent(runId)}`),
+
+  deleteRun: (runId: string) =>
+    request<{
+      deleted: boolean;
+      run_id: string;
+      project_id: string;
+      reports: number;
+      files_removed: boolean;
+    }>(
+      `/runs/${encodeURIComponent(runId)}${queryString({ confirmation: runId })}`,
+      { method: "DELETE" }
+    ),
 
   getRunEvents: (runId: string, after = 0) =>
     request<RunEvent[]>(
@@ -199,6 +255,21 @@ export const api = {
       `/projects/${encodeURIComponent(projectId)}/papers${queryString({
         status
       })}`
+    ),
+
+  deleteProjectPaper: (
+    projectId: string,
+    paperId: number,
+    evidenceId: string
+  ) =>
+    request<{
+      deleted: boolean;
+      paper_id: number;
+      evidence_id: string;
+      title: string;
+    }>(
+      `/projects/${encodeURIComponent(projectId)}/papers/${paperId}${queryString({ confirmation: evidenceId })}`,
+      { method: "DELETE" }
     ),
 
   importBibliography: (projectId: string, file: File) => {
@@ -369,6 +440,17 @@ export const api = {
       `/projects/${encodeURIComponent(projectId)}/documents`
     ),
 
+  deleteDocument: (projectId: string, documentId: string, filename: string) =>
+    request<{
+      deleted: boolean;
+      document_id: string;
+      filename: string;
+      files_removed: boolean;
+    }>(
+      `/projects/${encodeURIComponent(projectId)}/documents/${encodeURIComponent(documentId)}${queryString({ confirmation: filename })}`,
+      { method: "DELETE" }
+    ),
+
   uploadDocument: (projectId: string, file: File, paperId?: number) => {
     const data = new FormData();
     data.append("file", file);
@@ -410,6 +492,17 @@ export const api = {
   getConversation: (conversationId: string) =>
     request<Conversation>(
       `/conversations/${encodeURIComponent(conversationId)}`
+    ),
+
+  deleteConversation: (conversationId: string, title: string) =>
+    request<{
+      deleted: boolean;
+      conversation_id: string;
+      project_id: string;
+      messages: number;
+    }>(
+      `/conversations/${encodeURIComponent(conversationId)}${queryString({ confirmation: title })}`,
+      { method: "DELETE" }
     ),
 
   sendMessage: (

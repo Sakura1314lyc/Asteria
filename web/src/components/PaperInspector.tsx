@@ -1,5 +1,14 @@
-import { BookOpen, Braces, Database, ExternalLink, GitFork, X } from "lucide-react";
+import {
+  BookOpen,
+  Braces,
+  Database,
+  ExternalLink,
+  GitFork,
+  Trash2,
+  X
+} from "lucide-react";
 import type { ProjectPaper } from "../api/types";
+import { PUBLIC_DEMO } from "../deployment";
 import { StatusBadge } from "./Ui";
 
 const statusNames = {
@@ -11,10 +20,12 @@ const statusNames = {
 
 export function PaperInspector({
   item,
-  onClose
+  onClose,
+  onDelete
 }: {
   item: ProjectPaper | null;
   onClose: () => void;
+  onDelete?: (item: ProjectPaper) => void;
 }) {
   if (!item) {
     return (
@@ -118,6 +129,20 @@ export function PaperInspector({
             <small>
               {item.reviewer || "human"} · {item.decided_at || "未记录时间"}
             </small>
+          </section>
+        )}
+        {onDelete && (
+          <section className="inspector__section inspector__danger">
+            <h3>项目文献管理</h3>
+            <p>只从当前项目移除；其他项目中的同一论文不会受影响。</p>
+            <button
+              className="button button--danger button--small"
+              disabled={PUBLIC_DEMO}
+              title={PUBLIC_DEMO ? "公开观测站为只读模式" : undefined}
+              onClick={() => onDelete(item)}
+            >
+              <Trash2 size={14} /> 从项目移除
+            </button>
           </section>
         )}
       </div>

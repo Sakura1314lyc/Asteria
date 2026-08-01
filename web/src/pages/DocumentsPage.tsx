@@ -4,13 +4,15 @@ import {
   File,
   FileSearch,
   Search,
+  Trash2,
   Upload,
   X
 } from "lucide-react";
 import { FormEvent, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { api, apiUrl } from "../api/client";
-import type { SearchHit } from "../api/types";
+import type { DocumentRecord, SearchHit } from "../api/types";
+import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import {
   Button,
   EmptyState,
@@ -19,6 +21,7 @@ import {
   SectionTitle
 } from "../components/Ui";
 import { useProjectContext } from "../hooks/useProjectContext";
+import { PUBLIC_DEMO } from "../deployment";
 
 export function DocumentsPage() {
   const { project } = useProjectContext();
@@ -27,6 +30,9 @@ export function DocumentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchHit[]>([]);
+  const [documentToDelete, setDocumentToDelete] = useState<DocumentRecord | null>(
+    null
+  );
   const requestedPaperId = Number(searchParams.get("paper_id") || 0);
   const documents = useQuery({
     queryKey: ["documents", project.id],
@@ -64,6 +70,23 @@ export function DocumentsPage() {
   const search = useMutation({
     mutationFn: (text: string) => api.searchDocuments(project.id, text),
     onSuccess: setResults
+  });
+  const remove = useMutation({
+    mutationFn: (document: DocumentRecord) =>
+      api.deleteDocument(project.id, document.id, document.filename),
+    onSuccess: async () => {
+      setDocumentToDelete(null);
+      setResults([]);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["documents", project.id] }),
+        queryClient.invalidateQueries({ queryKey: ["project", project.id] }),
+        queryClient.invalidateQueries({ queryKey: ["papers", project.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["fulltext-workspace", project.id]
+        }),
+        queryClient.invalidateQueries({ queryKey: ["prisma-flow", project.id] })
+      ]);
+    }
   });
 
   function submitSearch(event: FormEvent) {
@@ -149,27 +172,39 @@ export function DocumentsPage() {
             />
           ) : (
             documents.data?.map((document) => (
-              <a
-                className="document-row"
-                key={document.id}
-                href={apiUrl(
-                  `/projects/${project.id}/documents/${document.id}/file`
-                )}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <div className="document-row__icon">
-                  <File size={18} />
-                </div>
-                <div>
-                  <strong>{document.filename}</strong>
-                  <span>
-                    {document.media_type} · {document.page_count} pages
-                  </span>
-                  <small>{new Date(document.created_at).toLocaleString("zh-CN")}</small>
-                </div>
-                <ArrowRight size={15} />
-              </a>
+              <div className="document-row-shell" key={document.id}>
+                <a
+                  className="document-row"
+                  href={apiUrl(
+                    `/projects/${project.id}/documents/${document.id}/file`
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <div className="document-row__icon">
+                    <File size={18} />
+                  </div>
+                  <div>
+                    <strong>{document.filename}</strong>
+                    <span>
+                      {document.media_type} · {document.page_count} pages
+                    </span>
+                    <small>
+                      {new Date(document.created_at).toLocaleString("zh-CN")}
+                    </small>
+                  </div>
+                  <ArrowRight size={15} />
+                </a>
+                <button
+                  className="icon-button document-delete"
+                  disabled={PUBLIC_DEMO}
+                  title={PUBLIC_DEMO ? "公开观测站为只读模式" : undefined}
+                  aria-label={`删除全文 ${document.filename}`}
+                  onClick={() => setDocumentToDelete(document)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             ))
           )}
         </section>
@@ -226,6 +261,22 @@ export function DocumentsPage() {
           </div>
         </section>
       </div>
+      <ConfirmDeleteModal
+        open={Boolean(documentToDelete)}
+        title="删除这份全文？"
+        description="原文件、提取文本、页码索引和搜索命中都会被清除；关联论文会恢复为未取得全文。"
+        expected={documentToDelete?.filename ?? ""}
+        label="输入文件名"
+        pending={remove.isPending}
+        error={remove.error}
+        onClose={() => {
+          if (!remove.isPending) {
+            setDocumentToDelete(null);
+            remove.reset();
+          }
+        }}
+        onConfirm={() => documentToDelete && remove.mutate(documentToDelete)}
+      />
     </div>
   );
 }

@@ -42,7 +42,7 @@ class ApiWebTests(unittest.TestCase):
             app = create_app(self.make_settings(root))
             with TestClient(app) as client:
                 health = client.get("/health").json()
-                self.assertEqual(health["version"], "0.12.0")
+                self.assertEqual(health["version"], "0.13.0")
                 self.assertTrue(health["web_available"])
                 self.assertEqual(client.get("/").status_code, 200)
                 self.assertIn("Asteria", client.get("/app").text)
@@ -74,6 +74,22 @@ class ApiWebTests(unittest.TestCase):
                 self.assertNotIn(
                     "must-never-leak",
                     client.get("/connections").text,
+                )
+                edited_connection = client.put(
+                    f"/connections/{connection_id}",
+                    json={
+                        "name": "Updated compatible API",
+                        "base_url": "http://127.0.0.1:9998/v1",
+                        "model": "updated-model",
+                        "api_format": "chat_completions",
+                        "api_key": "",
+                    },
+                )
+                self.assertEqual(edited_connection.status_code, 200)
+                self.assertEqual(edited_connection.json()["model"], "updated-model")
+                self.assertEqual(
+                    app.state.connections.resolve(connection_id).api_key,
+                    "must-never-leak",
                 )
 
                 project_response = client.post(
@@ -180,10 +196,135 @@ class ApiWebTests(unittest.TestCase):
                             for name in archive.namelist()
                         )
                     )
+                deleted_chat = client.delete(
+                    f"/conversations/{conversation_id}",
+                    params={"confirmation": "Evidence Q&A"},
+                )
+                self.assertEqual(deleted_chat.status_code, 200)
+                self.assertEqual(deleted_chat.json()["messages"], 2)
+                self.assertEqual(
+                    client.get(f"/conversations/{conversation_id}").status_code,
+                    404,
+                )
+                completed_run = client.get(f"/runs/{run_id}").json()
+                completed_run_dir = Path(completed_run["run_dir"])
+                self.assertTrue(completed_run_dir.is_dir())
+                deleted_run = client.delete(
+                    f"/runs/{run_id}",
+                    params={"confirmation": run_id},
+                )
+                self.assertEqual(deleted_run.status_code, 200)
+                self.assertFalse(completed_run_dir.exists())
+                self.assertEqual(client.get(f"/runs/{run_id}").status_code, 404)
+                paper_to_remove = client.get(f"/projects/{project_id}/papers").json()[0]
+                removed_paper = client.delete(
+                    f"/projects/{project_id}/papers/{paper_to_remove['id']}",
+                    params={"confirmation": paper_to_remove["evidence_id"]},
+                )
+                self.assertEqual(removed_paper.status_code, 200)
+                self.assertEqual(
+                    len(client.get(f"/projects/{project_id}/papers").json()),
+                    4,
+                )
                 self.assertEqual(
                     client.delete(f"/connections/{connection_id}").status_code,
                     200,
                 )
+
+    def test_project_update_and_confirmed_delete_clean_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = create_app(self.make_settings(root))
+            with TestClient(app) as client:
+                created = client.post(
+                    "/projects",
+                    json={
+                        "name": "Lifecycle review",
+                        "topic": "agent evaluation",
+                        "research_question": "How are agents evaluated?",
+                        "review_type": "narrative",
+                        "language": "en",
+                    },
+                ).json()
+                project_id = created["id"]
+
+                empty_update = client.patch(f"/projects/{project_id}", json={})
+                self.assertEqual(empty_update.status_code, 422)
+                updated = client.patch(
+                    f"/projects/{project_id}",
+                    json={
+                        "name": "Reproducible agent review",
+                        "topic": "reproducible CS agents",
+                        "research_question": "Which evaluations are reproducible?",
+                        "review_type": "systematic",
+                        "language": "zh-CN",
+                    },
+                )
+                self.assertEqual(updated.status_code, 200)
+                self.assertEqual(updated.json()["name"], "Reproducible agent review")
+                self.assertEqual(updated.json()["protocol"]["review_type"], "systematic")
+                project_detail = client.get(f"/projects/{project_id}").json()
+                self.assertEqual(project_detail["events"][0]["event_type"], "metadata_updated")
+                self.assertEqual(
+                    project_detail["events"][0]["payload"]["changes"]["name"],
+                    {
+                        "before": "Lifecycle review",
+                        "after": "Reproducible agent review",
+                    },
+                )
+
+                upload = client.post(
+                    f"/projects/{project_id}/documents",
+                    files={
+                        "file": (
+                            "evidence.txt",
+                            b"Reproducible evidence for lifecycle deletion.",
+                            "text/plain",
+                        )
+                    },
+                )
+                self.assertEqual(upload.status_code, 201)
+                project_root = root / "data" / project_id
+                self.assertTrue(project_root.is_dir())
+                wrong = client.delete(
+                    f"/projects/{project_id}",
+                    params={"confirmation": "Lifecycle review"},
+                )
+                self.assertEqual(wrong.status_code, 409)
+                self.assertTrue(project_root.is_dir())
+
+                deleted = client.delete(
+                    f"/projects/{project_id}",
+                    params={"confirmation": "Reproducible agent review"},
+                )
+                self.assertEqual(deleted.status_code, 200)
+                self.assertTrue(deleted.json()["deleted"])
+                self.assertEqual(deleted.json()["documents"], 1)
+                self.assertFalse(project_root.exists())
+                self.assertEqual(client.get(f"/projects/{project_id}").status_code, 404)
+                with app.state.workbench.database.connection() as database:
+                    fts_count = database.execute(
+                        "SELECT COUNT(*) AS count FROM document_chunks_fts"
+                    ).fetchone()["count"]
+                self.assertEqual(fts_count, 0)
+
+    def test_active_project_cannot_be_deleted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = create_app(self.make_settings(root))
+            with TestClient(app) as client:
+                project = app.state.workbench.create_project(
+                    name="Active review",
+                    topic="running agents",
+                )
+                run = app.state.workbench.create_run(project.id)
+                blocked = client.delete(
+                    f"/projects/{project.id}",
+                    params={"confirmation": project.name},
+                )
+                self.assertEqual(blocked.status_code, 409)
+                self.assertIn("active", blocked.json()["detail"])
+                self.assertIsNotNone(app.state.workbench.database.get_run(run.id))
 
     def test_document_routes_are_safe_and_search_is_not_shadowed(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -216,6 +357,12 @@ class ApiWebTests(unittest.TestCase):
                 documents = client.get(f"/projects/{project_id}/documents").json()
                 self.assertEqual(len(documents), 1)
                 self.assertNotIn("source_path", documents[0])
+                stored_document = app.state.workbench.database.get_document(
+                    project_id,
+                    documents[0]["id"],
+                )
+                stored_root = Path(stored_document["source_path"]).parent
+                self.assertTrue(stored_root.is_dir())
 
                 search = client.get(
                     f"/projects/{project_id}/documents/search",
@@ -223,6 +370,29 @@ class ApiWebTests(unittest.TestCase):
                 )
                 self.assertEqual(search.status_code, 200)
                 self.assertTrue(search.json())
+
+                wrong_delete = client.delete(
+                    f"/projects/{project_id}/documents/{documents[0]['id']}",
+                    params={"confirmation": "wrong.txt"},
+                )
+                self.assertEqual(wrong_delete.status_code, 409)
+                deleted_document = client.delete(
+                    f"/projects/{project_id}/documents/{documents[0]['id']}",
+                    params={"confirmation": "paper.txt"},
+                )
+                self.assertEqual(deleted_document.status_code, 200)
+                self.assertFalse(stored_root.exists())
+                self.assertEqual(
+                    client.get(f"/projects/{project_id}/documents").json(),
+                    [],
+                )
+                self.assertEqual(
+                    client.get(
+                        f"/projects/{project_id}/documents/search",
+                        params={"q": "tail latency"},
+                    ).json(),
+                    [],
+                )
 
                 oversized = client.post(
                     f"/projects/{project_id}/documents",

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { ProjectPaper, ScreeningStatus } from "../api/types";
 import { PaperInspector } from "../components/PaperInspector";
+import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import { ErrorState, LoadingState, StatusBadge } from "../components/Ui";
 import { useProjectContext } from "../hooks/useProjectContext";
 
@@ -37,6 +38,7 @@ export function LibraryPage() {
   const [status, setStatus] = useState<"" | ScreeningStatus>("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<ProjectPaper | null>(null);
+  const [paperToDelete, setPaperToDelete] = useState<ProjectPaper | null>(null);
   const [descending, setDescending] = useState(true);
   const papers = useQuery({
     queryKey: ["papers", project.id],
@@ -47,6 +49,25 @@ export function LibraryPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["papers", project.id] });
       await queryClient.invalidateQueries({ queryKey: ["project", project.id] });
+    }
+  });
+  const remove = useMutation({
+    mutationFn: (item: ProjectPaper) =>
+      api.deleteProjectPaper(project.id, item.id, item.evidence_id),
+    onSuccess: async () => {
+      setSelected(null);
+      setPaperToDelete(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["papers", project.id] }),
+        queryClient.invalidateQueries({ queryKey: ["project", project.id] }),
+        queryClient.invalidateQueries({
+          queryKey: ["screening-workspace", project.id]
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["fulltext-workspace", project.id]
+        }),
+        queryClient.invalidateQueries({ queryKey: ["prisma-flow", project.id] })
+      ]);
     }
   });
 
@@ -188,7 +209,27 @@ export function LibraryPage() {
           )}
         </div>
       </section>
-      <PaperInspector item={selected} onClose={() => setSelected(null)} />
+      <PaperInspector
+        item={selected}
+        onClose={() => setSelected(null)}
+        onDelete={setPaperToDelete}
+      />
+      <ConfirmDeleteModal
+        open={Boolean(paperToDelete)}
+        title="从项目移除这篇论文？"
+        description="筛选决定、证据卡和质量评价会一并删除。若已关联全文，需要先在全文页删除对应文档。"
+        expected={paperToDelete?.evidence_id ?? ""}
+        label="输入论文证据 ID"
+        pending={remove.isPending}
+        error={remove.error}
+        onClose={() => {
+          if (!remove.isPending) {
+            setPaperToDelete(null);
+            remove.reset();
+          }
+        }}
+        onConfirm={() => paperToDelete && remove.mutate(paperToDelete)}
+      />
     </div>
   );
 }

@@ -30,7 +30,7 @@ from .fulltext_screening import (
 from .models import EvidenceCard, Paper
 from .screening import evaluate_consensus
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class DatabaseError(RuntimeError):
@@ -80,6 +80,18 @@ class Database:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS project_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    project_id TEXT NOT NULL REFERENCES projects(id)
+                        ON DELETE CASCADE,
+                    timestamp TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_project_events_project
+                    ON project_events(project_id, id);
 
                 CREATE TABLE IF NOT EXISTS papers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -523,6 +535,162 @@ class Database:
             ).fetchall()
         return [_project(row) for row in rows]
 
+    def update_project(
+        self,
+        project_id: str,
+        *,
+        name: str,
+        topic: str,
+        research_question: str,
+        review_type: str,
+        language: str,
+        protocol: ReviewProtocol,
+    ) -> Project:
+        now = utc_now()
+        with self.connection() as db:
+            previous = db.execute(
+                "SELECT * FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if previous is None:
+                raise DatabaseError(f"Project not found: {project_id}")
+            before = {
+                "name": previous["name"],
+                "topic": previous["topic"],
+                "research_question": previous["research_question"],
+                "review_type": previous["review_type"],
+                "language": previous["language"],
+            }
+            after = {
+                "name": name,
+                "topic": topic,
+                "research_question": research_question,
+                "review_type": review_type,
+                "language": language,
+            }
+            changes = {
+                field: {"before": before[field], "after": after[field]}
+                for field in after
+                if before[field] != after[field]
+            }
+            result = db.execute(
+                """
+                UPDATE projects
+                SET name = ?, topic = ?, research_question = ?,
+                    review_type = ?, language = ?, protocol_json = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    name,
+                    topic,
+                    research_question,
+                    review_type,
+                    language,
+                    _json(protocol.to_dict()),
+                    now,
+                    project_id,
+                ),
+            )
+            if result.rowcount != 1:
+                raise DatabaseError(f"Project not found: {project_id}")
+            if changes:
+                db.execute(
+                    """
+                    INSERT INTO project_events(
+                        project_id, timestamp, event_type, payload_json
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (project_id, now, "metadata_updated", _json({"changes": changes})),
+                )
+        return self.require_project(project_id)
+
+    def list_project_events(
+        self,
+        project_id: str,
+        *,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with self.connection() as db:
+            rows = db.execute(
+                """
+                SELECT id, timestamp, event_type, payload_json
+                FROM project_events
+                WHERE project_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (project_id, max(1, min(limit, 500))),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "timestamp": row["timestamp"],
+                "event_type": row["event_type"],
+                "payload": _loads(row["payload_json"], {}),
+            }
+            for row in rows
+        ]
+
+    def delete_project(self, project_id: str) -> dict[str, int]:
+        """Delete a workspace and its relational/FTS data in one transaction."""
+
+        with self.connection() as db:
+            project = db.execute(
+                "SELECT id FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if project is None:
+                raise DatabaseError(f"Project not found: {project_id}")
+            counts = {
+                "runs": int(
+                    db.execute(
+                        "SELECT COUNT(*) AS count FROM runs WHERE project_id = ?",
+                        (project_id,),
+                    ).fetchone()["count"]
+                ),
+                "documents": int(
+                    db.execute(
+                        "SELECT COUNT(*) AS count FROM documents WHERE project_id = ?",
+                        (project_id,),
+                    ).fetchone()["count"]
+                ),
+                "papers": int(
+                    db.execute(
+                        "SELECT COUNT(*) AS count FROM project_papers WHERE project_id = ?",
+                        (project_id,),
+                    ).fetchone()["count"]
+                ),
+                "conversations": int(
+                    db.execute(
+                        "SELECT COUNT(*) AS count FROM conversations WHERE project_id = ?",
+                        (project_id,),
+                    ).fetchone()["count"]
+                ),
+            }
+            db.execute(
+                """
+                DELETE FROM document_chunks_fts
+                WHERE document_id IN (
+                    SELECT id FROM documents WHERE project_id = ?
+                )
+                """,
+                (project_id,),
+            )
+            db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            db.execute(
+                """
+                DELETE FROM papers
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM project_papers pp WHERE pp.paper_id = papers.id
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM documents d WHERE d.paper_id = papers.id
+                )
+                """
+            )
+        return counts
+
     def update_protocol(
         self,
         project_id: str,
@@ -836,6 +1004,71 @@ class Database:
         with self.connection() as db:
             rows = db.execute(query, values).fetchall()
         return [_paper_row(row) for row in rows]
+
+    def detach_project_paper(self, project_id: str, paper_id: int) -> dict[str, str]:
+        """Remove one paper and all of its project-scoped review records."""
+
+        with self.connection() as db:
+            row = db.execute(
+                """
+                SELECT pp.evidence_id, p.title
+                FROM project_papers pp
+                JOIN papers p ON p.id = pp.paper_id
+                WHERE pp.project_id = ? AND pp.paper_id = ?
+                """,
+                (project_id, paper_id),
+            ).fetchone()
+            if row is None:
+                raise DatabaseError("Project paper not found")
+            document_count = int(
+                db.execute(
+                    """
+                    SELECT COUNT(*) AS count FROM documents
+                    WHERE project_id = ? AND paper_id = ?
+                    """,
+                    (project_id, paper_id),
+                ).fetchone()["count"]
+            )
+            if document_count:
+                raise DatabaseError(
+                    "Delete the linked full-text document before removing this paper"
+                )
+            scoped_tables = (
+                "screening_decisions",
+                "screening_decision_events",
+                "screening_resolutions",
+                "screening_resolution_events",
+                "fulltext_screening_decisions",
+                "fulltext_screening_decision_events",
+                "fulltext_screening_resolutions",
+                "fulltext_screening_resolution_events",
+                "fulltext_retrieval_events",
+                "evidence_cards",
+                "quality_assessments",
+            )
+            for table in scoped_tables:
+                db.execute(
+                    f"DELETE FROM {table} WHERE project_id = ? AND paper_id = ?",
+                    (project_id, paper_id),
+                )
+            db.execute(
+                "DELETE FROM project_papers WHERE project_id = ? AND paper_id = ?",
+                (project_id, paper_id),
+            )
+            db.execute(
+                """
+                DELETE FROM papers
+                WHERE id = ?
+                AND NOT EXISTS (
+                    SELECT 1 FROM project_papers pp WHERE pp.paper_id = papers.id
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM documents d WHERE d.paper_id = papers.id
+                )
+                """,
+                (paper_id,),
+            )
+        return {"evidence_id": row["evidence_id"], "title": row["title"]}
 
     def record_screening(self, decision: ScreeningDecision) -> None:
         with self.connection() as db:
@@ -2134,6 +2367,25 @@ class Database:
             ).fetchall()
         return [_run_row(row) for row in rows]
 
+    def delete_run(self, run_id: str) -> dict[str, Any]:
+        with self.connection() as db:
+            row = db.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+            if row is None:
+                raise DatabaseError(f"Run not found: {run_id}")
+            reports = int(
+                db.execute(
+                    "SELECT COUNT(*) AS count FROM reports WHERE run_id = ?",
+                    (run_id,),
+                ).fetchone()["count"]
+            )
+            db.execute("DELETE FROM reports WHERE run_id = ?", (run_id,))
+            db.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+        return {
+            "project_id": row["project_id"],
+            "run_dir": row["run_dir"],
+            "reports": reports,
+        }
+
     def list_events(self, run_id: str, after_id: int = 0) -> list[dict[str, Any]]:
         with self.connection() as db:
             rows = db.execute(
@@ -2310,6 +2562,44 @@ class Database:
             ).fetchone()
         return dict(row) if row else None
 
+    def delete_document(self, project_id: str, document_id: str) -> dict[str, Any]:
+        with self.connection() as db:
+            row = db.execute(
+                """
+                SELECT * FROM documents
+                WHERE project_id = ? AND id = ?
+                """,
+                (project_id, document_id),
+            ).fetchone()
+            if row is None:
+                raise DatabaseError("Document not found")
+            db.execute(
+                "DELETE FROM document_chunks_fts WHERE document_id = ?",
+                (document_id,),
+            )
+            db.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+            if row["paper_id"] is not None:
+                remaining = int(
+                    db.execute(
+                        """
+                        SELECT COUNT(*) AS count FROM documents
+                        WHERE project_id = ? AND paper_id = ?
+                        """,
+                        (project_id, row["paper_id"]),
+                    ).fetchone()["count"]
+                )
+                if not remaining:
+                    db.execute(
+                        """
+                        UPDATE project_papers
+                        SET retrieval_status = 'not_requested',
+                            retrieval_reason = '', retrieval_updated_at = ''
+                        WHERE project_id = ? AND paper_id = ?
+                        """,
+                        (project_id, row["paper_id"]),
+                    )
+        return dict(row)
+
     def search_documents(
         self,
         project_id: str,
@@ -2467,6 +2757,26 @@ class Database:
                 (conversation_id,),
             ).fetchone()
         return dict(row) if row else None
+
+    def delete_conversation(self, conversation_id: str) -> dict[str, Any]:
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT * FROM conversations WHERE id = ?",
+                (conversation_id,),
+            ).fetchone()
+            if row is None:
+                raise DatabaseError("Conversation not found")
+            message_count = int(
+                db.execute(
+                    """
+                    SELECT COUNT(*) AS count FROM messages
+                    WHERE conversation_id = ?
+                    """,
+                    (conversation_id,),
+                ).fetchone()["count"]
+            )
+            db.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+        return {**dict(row), "message_count": message_count}
 
     def list_messages(self, conversation_id: str) -> list[dict[str, Any]]:
         with self.connection() as db:

@@ -4499,13 +4499,14 @@ label > span {
 
 .modal__header h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
 }
 
 .modal__header p {
   margin: 5px 0 0;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .modal__body {
@@ -5293,6 +5294,218 @@ label > span {
   ::view-transition-old(*),
   ::view-transition-new(*) {
     animation: none !important;
+  }
+}
+
+/* Project lifecycle controls — explicit edit and destructive confirmation. */
+.overview-lead__context {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.project-manage-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-manage-line .button {
+  min-height: 36px;
+  color: var(--text-secondary);
+}
+
+.project-manage-feedback {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.modal-danger-entry {
+  margin-right: auto;
+}
+
+.delete-project-confirmation {
+  display: grid;
+  gap: 20px;
+}
+
+.destructive-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 16px;
+  color: #70251f;
+  background: #fff6f4;
+  border: 1px solid #ebc4bf;
+  border-radius: var(--radius-md);
+}
+
+.destructive-summary > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.destructive-summary strong {
+  color: #541b17;
+}
+
+.destructive-summary p {
+  margin: 6px 0 0;
+  color: #7b3b35;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.delete-project-confirmation label {
+  display: grid;
+  gap: 8px;
+}
+
+.delete-project-confirmation label > span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.delete-project-confirmation label strong {
+  color: var(--text);
+}
+
+.document-row-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.document-row-shell .document-row {
+  border-bottom: 0;
+}
+
+.document-delete {
+  color: var(--text-muted);
+}
+
+.document-delete:hover:not(:disabled) {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.chat-thread-row {
+  display: grid;
+  min-height: 52px;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  align-items: center;
+  border-radius: 5px;
+}
+
+.chat-thread-row:hover,
+.chat-thread-row.is-active {
+  background: var(--surface);
+}
+
+.chat-threads__list .chat-thread-row__open {
+  min-width: 0;
+  height: 100%;
+  padding: 9px 4px 9px 10px;
+  background: transparent;
+}
+
+.chat-threads__list .chat-thread-row__delete {
+  display: grid;
+  width: 34px;
+  min-height: 40px;
+  place-items: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  opacity: 0;
+}
+
+.chat-thread-row:hover .chat-thread-row__delete,
+.chat-thread-row:focus-within .chat-thread-row__delete {
+  opacity: 1;
+}
+
+.chat-threads__list .chat-thread-row__delete:hover:not(:disabled) {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.run-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inspector__danger {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #e6c4c0;
+}
+
+.inspector__danger p {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.connection-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .button--medium,
+  input,
+  select {
+    min-height: 44px;
+  }
+
+  .icon-button {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .overview-lead__context {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .project-manage-line,
+  .project-manage-line .button {
+    width: 100%;
+  }
+
+  .modal__footer {
+    flex-wrap: wrap;
+  }
+
+  .modal-danger-entry {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .run-title-actions {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+
+  .chat-threads__list .chat-thread-row__delete {
+    width: 44px;
+    min-height: 44px;
+    opacity: 1;
+  }
+
+  .document-row-shell {
+    grid-template-columns: minmax(0, 1fr) 48px;
   }
 }
 

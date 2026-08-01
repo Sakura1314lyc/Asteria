@@ -6,16 +6,19 @@ import {
   Cable,
   FileText,
   MessageSquarePlus,
-  Sparkles
+  Sparkles,
+  Trash2
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Link } from "react-router";
 import { api } from "../api/client";
-import type { ChatSource } from "../api/types";
+import type { ChatSource, Conversation } from "../api/types";
+import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import { Button, ErrorState, LoadingState } from "../components/Ui";
 import { useProjectContext } from "../hooks/useProjectContext";
+import { PUBLIC_DEMO } from "../deployment";
 
 export function ChatPage() {
   const { project } = useProjectContext();
@@ -26,6 +29,8 @@ export function ChatPage() {
   const [connectionId, setConnectionId] = useState("env-openai");
   const [demo, setDemo] = useState(true);
   const [selectedSources, setSelectedSources] = useState<ChatSource[]>([]);
+  const [conversationToDelete, setConversationToDelete] =
+    useState<Conversation | null>(null);
 
   const conversations = useQuery({
     queryKey: ["conversations", project.id],
@@ -98,6 +103,22 @@ export function ChatPage() {
       });
     }
   });
+  const remove = useMutation({
+    mutationFn: (item: Conversation) =>
+      api.deleteConversation(item.id, item.title),
+    onMutate: async (item) => {
+      await queryClient.cancelQueries({ queryKey: ["conversation", item.id] });
+    },
+    onSuccess: async (_, removed) => {
+      const next = conversations.data?.find((item) => item.id !== removed.id);
+      setActiveId(next?.id ?? "");
+      setSelectedSources([]);
+      setConversationToDelete(null);
+      await queryClient.invalidateQueries({
+        queryKey: ["conversations", project.id]
+      });
+    }
+  });
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -130,17 +151,34 @@ export function ChatPage() {
         </button>
         <div className="chat-threads__list">
           {conversations.data?.map((item) => (
-            <button
-              className={item.id === activeId ? "is-active" : ""}
+            <div
+              className={`chat-thread-row ${
+                item.id === activeId ? "is-active" : ""
+              }`}
               key={item.id}
-              onClick={() => {
-                setActiveId(item.id);
-                setSelectedSources([]);
-              }}
             >
-              <strong>{item.title}</strong>
-              <span>{item.message_count} 条 · {item.connection_label}</span>
-            </button>
+              <button
+                className="chat-thread-row__open"
+                onClick={() => {
+                  setActiveId(item.id);
+                  setSelectedSources([]);
+                }}
+              >
+                <strong>{item.title}</strong>
+                <span>
+                  {item.message_count} 条 · {item.connection_label}
+                </span>
+              </button>
+              <button
+                className="chat-thread-row__delete"
+                disabled={PUBLIC_DEMO}
+                title={PUBLIC_DEMO ? "公开观测站为只读模式" : undefined}
+                aria-label={`删除对话 ${item.title}`}
+                onClick={() => setConversationToDelete(item)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           ))}
         </div>
       </aside>
@@ -318,6 +356,24 @@ export function ChatPage() {
           ))
         )}
       </aside>
+      <ConfirmDeleteModal
+        open={Boolean(conversationToDelete)}
+        title="删除这段研究对话？"
+        description="对话中的问题、回答和来源快照都会被删除，项目论文与证据不会受影响。"
+        expected={conversationToDelete?.title ?? ""}
+        label="输入对话标题"
+        pending={remove.isPending}
+        error={remove.error}
+        onClose={() => {
+          if (!remove.isPending) {
+            setConversationToDelete(null);
+            remove.reset();
+          }
+        }}
+        onConfirm={() =>
+          conversationToDelete && remove.mutate(conversationToDelete)
+        }
+      />
     </div>
   );
 }

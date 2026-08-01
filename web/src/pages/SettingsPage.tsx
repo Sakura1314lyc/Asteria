@@ -4,6 +4,7 @@ import {
   CircleOff,
   KeyRound,
   Link2,
+  Pencil,
   PlugZap,
   ShieldCheck,
   Trash2
@@ -11,6 +12,7 @@ import {
 import { FormEvent, useState } from "react";
 import { api } from "../api/client";
 import type { ModelConnection } from "../api/types";
+import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import {
   Button,
   ErrorState,
@@ -55,6 +57,9 @@ export function SettingsPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(initialForm);
   const [tested, setTested] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [connectionToDelete, setConnectionToDelete] =
+    useState<ModelConnection | null>(null);
   const capabilities = useQuery({
     queryKey: ["capabilities"],
     queryFn: api.capabilities
@@ -70,10 +75,20 @@ export function SettingsPage() {
       await queryClient.invalidateQueries({ queryKey: ["connections"] });
     }
   });
+  const update = useMutation({
+    mutationFn: () => api.updateConnection(editingId ?? "", form),
+    onSuccess: async () => {
+      setEditingId(null);
+      setForm(initialForm);
+      await queryClient.invalidateQueries({ queryKey: ["connections"] });
+    }
+  });
   const remove = useMutation({
     mutationFn: api.deleteConnection,
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["connections"] })
+    onSuccess: async () => {
+      setConnectionToDelete(null);
+      await queryClient.invalidateQueries({ queryKey: ["connections"] });
+    }
   });
   const test = useMutation({
     mutationFn: api.testConnection,
@@ -97,7 +112,8 @@ export function SettingsPage() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    create.mutate(form);
+    if (editingId) update.mutate();
+    else create.mutate(form);
   }
   const deepseekMismatch =
     form.base_url.toLowerCase().includes("deepseek.com") &&
@@ -117,8 +133,12 @@ export function SettingsPage() {
               <PlugZap size={19} />
             </span>
             <div>
-              <h3>接入模型</h3>
-              <p>支持 Responses 与 OpenAI 兼容 Chat Completions。</p>
+              <h3>{editingId ? "编辑模型连接" : "接入模型"}</h3>
+              <p>
+                {editingId
+                  ? "留空 API Key 将保留当前会话中的原密钥。"
+                  : "支持 Responses 与 OpenAI 兼容 Chat Completions。"}
+              </p>
             </div>
           </header>
           <form onSubmit={submit}>
@@ -204,7 +224,7 @@ export function SettingsPage() {
                 type="password"
                 value={form.api_key}
                 autoComplete="off"
-                placeholder="sk-..."
+                placeholder={editingId ? "留空以保留原密钥" : "sk-..."}
                 onChange={(event) =>
                   setForm({ ...form, api_key: event.target.value })
                 }
@@ -215,12 +235,33 @@ export function SettingsPage() {
                 <ShieldCheck size={15} />
                 不写入数据库与导出包
               </span>
-              <Button loading={create.isPending} type="submit">
-                <Link2 size={15} /> 保存到当前会话
-              </Button>
+              <div className="connection-form-actions">
+                {editingId && (
+                  <Button
+                    variant="quiet"
+                    onClick={() => {
+                      setEditingId(null);
+                      setForm(initialForm);
+                      update.reset();
+                    }}
+                  >
+                    取消编辑
+                  </Button>
+                )}
+                <Button
+                  loading={editingId ? update.isPending : create.isPending}
+                  type="submit"
+                >
+                  <Link2 size={15} />
+                  {editingId ? "保存修改" : "保存到当前会话"}
+                </Button>
+              </div>
             </div>
             {create.isError && (
               <p className="error-text">{create.error.message}</p>
+            )}
+            {update.isError && (
+              <p className="error-text">{update.error.message}</p>
             )}
           </form>
         </section>
@@ -238,7 +279,18 @@ export function SettingsPage() {
                 tested={tested === connection.id}
                 testing={test.isPending && test.variables === connection.id}
                 onTest={() => test.mutate(connection.id)}
-                onRemove={() => remove.mutate(connection.id)}
+                onEdit={() => {
+                  setEditingId(connection.id);
+                  setForm({
+                    name: connection.name,
+                    base_url: connection.base_url,
+                    model: connection.model,
+                    api_format: connection.api_format,
+                    api_key: ""
+                  });
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                onRemove={() => setConnectionToDelete(connection)}
               />
             ))}
           </div>
@@ -266,6 +318,24 @@ export function SettingsPage() {
           </span>
         ))}
       </section>
+      <ConfirmDeleteModal
+        open={Boolean(connectionToDelete)}
+        title="删除这个模型连接？"
+        description="密钥和会话连接会立即从当前服务进程移除；已经完成的研究运行不会改变。"
+        expected={connectionToDelete?.name ?? ""}
+        label="输入连接名称"
+        pending={remove.isPending}
+        error={remove.error}
+        onClose={() => {
+          if (!remove.isPending) {
+            setConnectionToDelete(null);
+            remove.reset();
+          }
+        }}
+        onConfirm={() =>
+          connectionToDelete && remove.mutate(connectionToDelete.id)
+        }
+      />
     </div>
   );
 }
@@ -275,12 +345,14 @@ function ConnectionRow({
   tested,
   testing,
   onTest,
+  onEdit,
   onRemove
 }: {
   connection: ModelConnection;
   tested: boolean;
   testing: boolean;
   onTest: () => void;
+  onEdit: () => void;
   onRemove: () => void;
 }) {
   return (
@@ -310,13 +382,22 @@ function ConnectionRow({
           {tested ? "已通过" : "测试"}
         </Button>
         {connection.source === "session" && (
-          <button
-            className="icon-button"
-            onClick={onRemove}
-            aria-label={`删除 ${connection.name}`}
-          >
-            <Trash2 size={15} />
-          </button>
+          <>
+            <button
+              className="icon-button"
+              onClick={onEdit}
+              aria-label={`编辑 ${connection.name}`}
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              className="icon-button"
+              onClick={onRemove}
+              aria-label={`删除 ${connection.name}`}
+            >
+              <Trash2 size={15} />
+            </button>
+          </>
         )}
       </div>
     </article>

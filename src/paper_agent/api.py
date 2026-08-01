@@ -60,7 +60,7 @@ def create_app(settings: Settings | None = None):
 
     app = FastAPI(
         title="Paper Research Agent API",
-        version="0.12.0",
+        version="0.13.0",
         description=(
             "Local-first API for literature discovery, screening, evidence "
             "extraction, quality appraisal, full-text search, and report generation."
@@ -85,6 +85,17 @@ def create_app(settings: Settings | None = None):
         research_question: str = Field(default="", max_length=2000)
         review_type: str = "narrative"
         language: str = "zh-CN"
+
+    class ProjectUpdate(BaseModel):
+        name: str | None = Field(default=None, min_length=1, max_length=200)
+        topic: str | None = Field(default=None, min_length=1, max_length=500)
+        research_question: str | None = Field(
+            default=None,
+            min_length=1,
+            max_length=2000,
+        )
+        review_type: str | None = None
+        language: str | None = Field(default=None, min_length=1, max_length=20)
 
     class ProtocolUpdate(BaseModel):
         review_type: str = "systematic"
@@ -112,6 +123,13 @@ def create_app(settings: Settings | None = None):
         model: str = Field(min_length=1, max_length=200)
         api_format: str = "responses"
         api_key: str = Field(min_length=1, max_length=1000)
+
+    class ConnectionUpdate(BaseModel):
+        name: str = Field(min_length=1, max_length=100)
+        base_url: str = Field(min_length=8, max_length=500)
+        model: str = Field(min_length=1, max_length=200)
+        api_format: str = "responses"
+        api_key: str = Field(default="", max_length=1000)
 
     class ConversationCreate(BaseModel):
         title: str = Field(default="新对话", max_length=200)
@@ -252,7 +270,7 @@ def create_app(settings: Settings | None = None):
         )
         return {
             "status": "ok",
-            "version": "0.12.0",
+            "version": "0.13.0",
             "database": str(active_settings.database_path),
             "specialization": "computer_science",
             "web_available": (configured_web / "index.html").is_file(),
@@ -301,6 +319,16 @@ def create_app(settings: Settings | None = None):
         except ConnectionError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {"deleted": True}
+
+    @app.put("/connections/{connection_id}")
+    def update_connection(
+        connection_id: str,
+        payload: ConnectionUpdate,
+    ) -> dict[str, object]:
+        try:
+            return connections.update(connection_id, **payload.model_dump())
+        except ConnectionError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/connections/{connection_id}/test")
     def test_connection(connection_id: str) -> dict[str, Any]:
@@ -378,7 +406,42 @@ def create_app(settings: Settings | None = None):
                 public_document(document)
                 for document in workbench.database.list_documents(project.id)
             ],
+            "events": workbench.database.list_project_events(project.id),
         }
+
+    @app.patch("/projects/{project_id}")
+    def update_project(
+        project_id: str,
+        payload: ProjectUpdate,
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        changes = payload.model_dump(exclude_unset=True)
+        if not changes:
+            raise HTTPException(status_code=422, detail="No project fields supplied")
+        try:
+            return workbench.update_project(project_id, **changes).to_dict()
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.delete("/projects/{project_id}")
+    def delete_project(
+        project_id: str,
+        confirmation: str = Query(min_length=1, max_length=200),
+    ) -> dict[str, Any]:
+        project = project_or_404(project_id)
+        if confirmation != project.name:
+            raise HTTPException(
+                status_code=409,
+                detail="Project name confirmation does not match",
+            )
+        try:
+            return {
+                "deleted": True,
+                "project_id": project.id,
+                **workbench.delete_project(project.id),
+            }
+        except WorkbenchError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.put("/projects/{project_id}/protocol")
     def update_protocol(
@@ -433,6 +496,26 @@ def create_app(settings: Settings | None = None):
     @app.get("/runs/{run_id}")
     def get_run(run_id: str) -> dict[str, Any]:
         return run_or_404(run_id)
+
+    @app.delete("/runs/{run_id}")
+    def delete_run(
+        run_id: str,
+        confirmation: str = Query(min_length=1, max_length=100),
+    ) -> dict[str, Any]:
+        run = run_or_404(run_id)
+        if confirmation != run_id:
+            raise HTTPException(status_code=409, detail="Run confirmation does not match")
+        try:
+            result = workbench.delete_run(run_id)
+        except WorkbenchError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "deleted": True,
+            "run_id": run_id,
+            "project_id": run["project_id"],
+            "reports": result["reports"],
+            "files_removed": result["files_removed"],
+        }
 
     @app.get("/runs/{run_id}/cs-analysis")
     def get_cs_analysis(run_id: str) -> dict[str, Any]:
@@ -551,6 +634,34 @@ def create_app(settings: Settings | None = None):
             }
             for row in rows
         ]
+
+    @app.delete("/projects/{project_id}/papers/{paper_id}")
+    def delete_project_paper(
+        project_id: str,
+        paper_id: int,
+        confirmation: str = Query(min_length=1, max_length=100),
+    ) -> dict[str, Any]:
+        project_or_404(project_id)
+        paper = next(
+            (
+                row
+                for row in workbench.database.list_project_papers(project_id)
+                if row["id"] == paper_id
+            ),
+            None,
+        )
+        if paper is None:
+            raise HTTPException(status_code=404, detail="Project paper not found")
+        if confirmation != paper["evidence_id"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Paper confirmation does not match",
+            )
+        try:
+            removed = workbench.database.detach_project_paper(project_id, paper_id)
+        except DatabaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"deleted": True, "paper_id": paper_id, **removed}
 
     @app.post("/projects/{project_id}/bibliography", status_code=201)
     async def import_bibliography(
@@ -847,6 +958,25 @@ def create_app(settings: Settings | None = None):
             "messages": workbench.database.list_messages(conversation_id),
         }
 
+    @app.delete("/conversations/{conversation_id}")
+    def delete_conversation(
+        conversation_id: str,
+        confirmation: str = Query(min_length=1, max_length=200),
+    ) -> dict[str, Any]:
+        conversation = conversation_or_404(conversation_id)
+        if confirmation != conversation["title"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Conversation confirmation does not match",
+            )
+        removed = workbench.database.delete_conversation(conversation_id)
+        return {
+            "deleted": True,
+            "conversation_id": conversation_id,
+            "project_id": conversation["project_id"],
+            "messages": removed["message_count"],
+        }
+
     @app.post("/conversations/{conversation_id}/messages", status_code=201)
     def create_message(
         conversation_id: str,
@@ -953,6 +1083,29 @@ def create_app(settings: Settings | None = None):
     @app.get("/projects/{project_id}/documents/{document_id}")
     def get_document(project_id: str, document_id: str) -> dict[str, Any]:
         return public_document(document_or_404(project_id, document_id))
+
+    @app.delete("/projects/{project_id}/documents/{document_id}")
+    def delete_document(
+        project_id: str,
+        document_id: str,
+        confirmation: str = Query(min_length=1, max_length=500),
+    ) -> dict[str, Any]:
+        document = document_or_404(project_id, document_id)
+        if confirmation != document["filename"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Document confirmation does not match",
+            )
+        try:
+            removed = workbench.delete_document(project_id, document_id)
+        except WorkbenchError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "deleted": True,
+            "document_id": document_id,
+            "filename": document["filename"],
+            "files_removed": removed["files_removed"],
+        }
 
     @app.get("/projects/{project_id}/documents/{document_id}/file")
     def download_document(project_id: str, document_id: str):

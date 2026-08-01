@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from .agent_profiles import get_agent_profile
 from .artifacts import checkpoint, load_state
@@ -67,6 +69,100 @@ class ResearchWorkbench:
             language=language or self.settings.language,
             protocol=protocol,
         )
+
+    def update_project(
+        self,
+        project_id: str,
+        *,
+        name: str | None = None,
+        topic: str | None = None,
+        research_question: str | None = None,
+        review_type: str | None = None,
+        language: str | None = None,
+    ):
+        project = self.database.require_project(project_id)
+        updated_name = project.name if name is None else name.strip()
+        updated_topic = project.topic if topic is None else topic.strip()
+        updated_question = (
+            project.research_question
+            if research_question is None
+            else research_question.strip()
+        )
+        updated_review_type = review_type or project.review_type
+        updated_language = project.language if language is None else language.strip()
+        if not updated_name or not updated_topic or not updated_question:
+            raise ValueError("Project name, topic, and research question are required")
+        if not updated_language:
+            raise ValueError("Project language is required")
+        get_profile(updated_review_type)
+        protocol = ReviewProtocol.from_dict(
+            {
+                **project.protocol.to_dict(),
+                "review_type": updated_review_type,
+            }
+        )
+        return self.database.update_project(
+            project_id,
+            name=updated_name,
+            topic=updated_topic,
+            research_question=updated_question,
+            review_type=updated_review_type,
+            language=updated_language,
+            protocol=protocol,
+        )
+
+    def delete_project(self, project_id: str) -> dict[str, int | bool]:
+        project = self.database.require_project(project_id)
+        active_runs = [
+            run
+            for run in self.database.list_runs(project.id)
+            if run["status"] in {RunStatus.QUEUED, RunStatus.RUNNING}
+        ]
+        if active_runs:
+            raise WorkbenchError("Cannot delete a project while a run is active")
+        project_root = (self.data_root / project.id).resolve()
+        if not project_root.is_relative_to(self.data_root) or project_root == self.data_root:
+            raise WorkbenchError("Project storage path is outside the managed data root")
+        result = self.database.delete_project(project.id)
+        removed_files = project_root.is_dir()
+        if removed_files:
+            shutil.rmtree(project_root)
+        return {**result, "files_removed": removed_files}
+
+    def delete_run(self, run_id: str) -> dict[str, Any]:
+        run = self.database.get_run(run_id)
+        if not run:
+            raise WorkbenchError(f"Run not found: {run_id}")
+        if run["status"] in {RunStatus.QUEUED, RunStatus.RUNNING}:
+            raise WorkbenchError("Cannot delete an active run")
+        run_dir = Path(run["run_dir"]).resolve() if run["run_dir"] else None
+        if run_dir and (
+            not run_dir.is_relative_to(self.data_root) or run_dir == self.data_root
+        ):
+            raise WorkbenchError("Run storage path is outside the managed data root")
+        result = self.database.delete_run(run_id)
+        files_removed = bool(run_dir and run_dir.is_dir())
+        if files_removed and run_dir:
+            shutil.rmtree(run_dir)
+        return {**result, "files_removed": files_removed}
+
+    def delete_document(self, project_id: str, document_id: str) -> dict[str, Any]:
+        project = self.database.require_project(project_id)
+        document = self.database.get_document(project.id, document_id)
+        if not document:
+            raise WorkbenchError("Document not found")
+        document_root = Path(document["source_path"]).resolve().parent
+        project_root = (self.data_root / project.id).resolve()
+        if (
+            not document_root.is_relative_to(project_root)
+            or document_root == project_root
+        ):
+            raise WorkbenchError("Document storage path is outside the project root")
+        result = self.database.delete_document(project.id, document_id)
+        files_removed = document_root.is_dir()
+        if files_removed:
+            shutil.rmtree(document_root)
+        return {**result, "files_removed": files_removed}
 
     def import_bibliography(
         self,

@@ -74,7 +74,7 @@ export function AppShell() {
           <span>
             <strong>{PUBLIC_DEMO ? "公开观测站" : "本地工作区"}</strong>
             <small>
-              {PUBLIC_DEMO ? "只读研究样例" : "数据留在此设备"} · v0.12.0
+              {PUBLIC_DEMO ? "只读研究样例" : "数据留在此设备"} · v0.13.0
             </small>
           </span>
         </footer>
