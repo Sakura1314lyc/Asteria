@@ -25,6 +25,7 @@ from paper_agent import database as database_module
 from paper_agent import workbench as workbench_module
 from paper_agent.api import create_app
 from paper_agent.config import Settings
+from paper_agent.domain import ReviewProtocol
 from paper_agent.llm import DemoLLM
 from paper_agent.retrievers import bundled_demo_retriever
 
@@ -70,6 +71,25 @@ def _seed_observatory() -> None:
         ),
         review_type="systematic",
         language="zh-CN",
+    )
+    workbench.database.update_protocol(
+        project.id,
+        ReviewProtocol(
+            review_type="systematic",
+            population=["computer science research agents"],
+            intervention=["agentic literature search"],
+            comparison=["manual or conventional search workflows"],
+            outcomes=["reproducibility", "citation grounding", "auditability"],
+            include_keywords=["research agent", "literature search", "reproducibility"],
+            exclude_keywords=["editorial", "non-scholarly demo"],
+            year_from=2020,
+            languages=["en", "zh-CN"],
+            study_types=["evaluation", "benchmark", "system study"],
+            notes="Synthetic public protocol for interface evaluation only.",
+        ),
+        amendment_reason=(
+            "合成样例：试检索后补充复现性、引用约束与审计关键词。"
+        ),
     )
     run = workbench.create_run(project.id, agent_id="deep_review")
     workbench.execute_run(

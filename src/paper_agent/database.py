@@ -695,9 +695,36 @@ class Database:
         self,
         project_id: str,
         protocol: ReviewProtocol,
+        *,
+        amendment_reason: str = "",
     ) -> Project:
+        if protocol.review_type not in {"narrative", "scoping", "systematic", "thesis"}:
+            raise ValueError(f"Unsupported review type: {protocol.review_type}")
+        if (
+            protocol.year_from is not None
+            and protocol.year_to is not None
+            and protocol.year_from > protocol.year_to
+        ):
+            raise ValueError("Protocol start year cannot be after end year")
         now = utc_now()
         with self.connection() as db:
+            previous = db.execute(
+                "SELECT protocol_json FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if previous is None:
+                raise DatabaseError(f"Project not found: {project_id}")
+            before = ReviewProtocol.from_dict(
+                _loads(previous["protocol_json"], {})
+            ).to_dict()
+            after = protocol.to_dict()
+            changes = {
+                field: {"before": before.get(field), "after": after.get(field)}
+                for field in after
+                if before.get(field) != after.get(field)
+            }
+            if changes and not amendment_reason.strip():
+                raise ValueError("Protocol amendment reason is required")
             result = db.execute(
                 """
                 UPDATE projects
@@ -708,6 +735,25 @@ class Database:
             )
             if result.rowcount != 1:
                 raise DatabaseError(f"Project not found: {project_id}")
+            if changes:
+                db.execute(
+                    """
+                    INSERT INTO project_events(
+                        project_id, timestamp, event_type, payload_json
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        project_id,
+                        now,
+                        "protocol_updated",
+                        _json(
+                            {
+                                "changes": changes,
+                                "reason": amendment_reason.strip(),
+                            }
+                        ),
+                    ),
+                )
         return self.require_project(project_id)
 
     def upsert_paper(self, paper: Paper) -> int:

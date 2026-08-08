@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f6f61.svg)](LICENSE)
 
-[![Version](https://img.shields.io/badge/version-0.13.0-246bfd.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.14.0-246bfd.svg)](CHANGELOG.md)
 
 [在线观测站](https://asteria-observatory.vercel.app/app) · [本地安装](#五分钟本地体验) · [架构文档](docs/ARCHITECTURE.md)
 
@@ -39,20 +39,21 @@ paper-agent run "科研智能体" --demo --fixture examples/demo_papers.json
 
 | 研究环节 | Asteria 当前提供 | 留下的审计依据 |
 |---|---|---|
-| 方案 | 叙述性、范围、系统综述与 CS 复现审计 | 研究问题、限制条件、采用的检索式 |
+| 方案 | 叙述性、范围、系统综述与 CS 复现审计；可修订 PICO、年份、关键词、语言与研究类型 | 研究问题、限制条件、采用的检索式，以及每次修订的原因与字段差异 |
 | 检索 | OpenAlex、arXiv、DBLP、Semantic Scholar 与可插拔检索器 | 每个来源的实际查询、时间、数量、故障与去重损耗 |
 | 筛选 | 标题/摘要与全文两阶段人工门；支持双人盲审和仲裁 | 追加式决定历史、理由、冲突与 PRISMA 式计数 |
 | 证据 | CS 论文结构化字段、benchmark、复现性与证据缺口 | 稳定论文/证据 ID、全文页码和结构化矩阵 |
 | 综合 | 证据约束对话、引用型报告与版本保存 | 段落引用、BibTeX、引用结构和词汇对齐诊断 |
 | 交接 | 项目 ZIP、运行产物和 SHA-256 清单 | 可移植原始材料、配置、事件与报告 |
-| 生命周期 | 编辑项目身份；删除项目、运行、全文、对话与单篇项目文献 | 项目字段变更事件、强确认、FTS/磁盘级联清理 |
+| 生命周期 | 编辑项目身份和研究方案；删除项目、运行、全文、对话与单篇项目文献 | 字段级修订账本、强确认、FTS/磁盘级联清理 |
 
 默认数据保存在本机 SQLite/WAL 数据库。范围综述和系统综述会在检索后停在人工门，不会静默替研究者排除论文。
 
 ## 当前成熟度与边界
 
 - 单机研究工作台已经贯通 Web、CLI、REST API、SQLite 状态、离线演示与可移植导出；自动化测试不调用付费模型。
-- 项目资料修改会写入 schema v6 变更事件；危险删除必须输入对象名称或稳定 ID，运行中的项目/运行不能删除。
+- 项目资料与研究方案修改会写入 schema v6 修订账本；方案变更必须填写原因，危险删除必须输入对象名称或稳定 ID，运行中的项目/运行不能删除。
+- REST API 只返回前端需要的公开视图，不暴露 SQLite、数据根目录、运行目录或后台作业内部结果。
 - 当前没有账号与项目权限系统。服务默认只绑定 `127.0.0.1`，不能未经认证直接暴露到公网。
 - `audit.json` 是结构与可追踪性检查，不是事实核验；摘要级质量代理也不等于正式风险偏倚工具。
 - 研究者仍需阅读原文、判断方法质量、处理版权和遵守学术诚信要求。

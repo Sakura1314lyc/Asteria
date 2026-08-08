@@ -202,6 +202,16 @@ async function exploreLifecycleControls(page, routes) {
     await page.getByRole('button', { name: '关闭' }).click();
   }
 
+  const reviseProtocol = page.getByRole('button', { name: '修订方案' });
+  if (await reviseProtocol.isEnabled().catch(() => false)) {
+    await reviseProtocol.click();
+    await page.screenshot({
+      path: path.join(OUTPUT_DIR, 'protocol-edit.png'),
+      fullPage: false
+    });
+    await page.getByRole('button', { name: '关闭' }).click();
+  }
+
   await navigate(page, `${routes.projectUrl}/documents`);
   const deleteDocument = page.getByRole('button', { name: /^删除全文 / }).first();
   if (await deleteDocument.isEnabled().catch(() => false)) {
@@ -251,6 +261,7 @@ async function rehearse(page, routes) {
     passed = (await ensureVisible(page, '.research-spine', 'research evidence spine')) && passed;
     passed = (await ensureVisible(page, '.run-list__item', 'run history entry')) && passed;
     passed = (await ensureVisible(page, '.project-manage-line', 'project lifecycle controls')) && passed;
+    passed = (await ensureVisible(page, '.project-activity', 'project revision ledger')) && passed;
   }
   if (routes.runUrl) {
     await navigate(page, routes.runUrl);
@@ -335,6 +346,13 @@ async function exerciseLifecycle(page, routes) {
   await page.getByLabel('项目名称').fill(editedName);
   await page.getByRole('button', { name: '保存修改' }).click();
   await page.getByRole('heading', { name: editedName }).waitFor();
+
+  await page.getByRole('button', { name: '修订方案' }).click();
+  await page.getByLabel('起始年份').fill('2020');
+  await page.getByLabel(/^本次修订原因/).fill('生命周期 QA：记录试检索后的范围调整');
+  await page.getByRole('button', { name: '保存并记录修订' }).click();
+  await page.getByText('研究方案已修订').waitFor();
+  await page.getByText(/生命周期 QA：记录试检索后的范围调整/).waitFor();
 
   await navigate(page, `${routes.projectUrl}/documents`);
   const documentRow = page.locator('.document-row-shell').first();

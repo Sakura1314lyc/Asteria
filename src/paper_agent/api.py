@@ -60,7 +60,7 @@ def create_app(settings: Settings | None = None):
 
     app = FastAPI(
         title="Paper Research Agent API",
-        version="0.13.0",
+        version="0.14.0",
         description=(
             "Local-first API for literature discovery, screening, evidence "
             "extraction, quality appraisal, full-text search, and report generation."
@@ -99,17 +99,18 @@ def create_app(settings: Settings | None = None):
 
     class ProtocolUpdate(BaseModel):
         review_type: str = "systematic"
-        population: list[str] = []
-        intervention: list[str] = []
-        comparison: list[str] = []
-        outcomes: list[str] = []
-        include_keywords: list[str] = []
-        exclude_keywords: list[str] = []
-        year_from: int | None = None
-        year_to: int | None = None
-        languages: list[str] = []
-        study_types: list[str] = []
-        notes: str = ""
+        population: list[str] = Field(default_factory=list, max_length=100)
+        intervention: list[str] = Field(default_factory=list, max_length=100)
+        comparison: list[str] = Field(default_factory=list, max_length=100)
+        outcomes: list[str] = Field(default_factory=list, max_length=100)
+        include_keywords: list[str] = Field(default_factory=list, max_length=100)
+        exclude_keywords: list[str] = Field(default_factory=list, max_length=100)
+        year_from: int | None = Field(default=None, ge=1900, le=2100)
+        year_to: int | None = Field(default=None, ge=1900, le=2100)
+        languages: list[str] = Field(default_factory=list, max_length=100)
+        study_types: list[str] = Field(default_factory=list, max_length=100)
+        notes: str = Field(default="", max_length=4000)
+        amendment_reason: str = Field(default="", max_length=1000)
 
     class RunCreate(BaseModel):
         demo: bool = False
@@ -230,6 +231,33 @@ def create_app(settings: Settings | None = None):
             if key not in {"source_path", "text_path"}
         }
 
+    def public_run(run: dict[str, Any]) -> dict[str, Any]:
+        """Return only run fields that a Web/API consumer actually needs."""
+
+        stored_config = run.get("config")
+        public_config: dict[str, Any] = {}
+        if isinstance(stored_config, dict):
+            for key in ("agent", "connection"):
+                value = stored_config.get(key)
+                if isinstance(value, dict):
+                    public_config[key] = value
+        return {
+            "id": run["id"],
+            "project_id": run["project_id"],
+            "status": run["status"],
+            "stage": run["stage"],
+            "artifacts_available": bool(run.get("run_dir")),
+            "config": public_config,
+            "error": run.get("error", ""),
+            "created_at": run["created_at"],
+            "updated_at": run["updated_at"],
+        }
+
+    def public_job(job) -> dict[str, Any]:
+        payload = job.to_dict()
+        payload["result_available"] = payload.pop("result") is not None
+        return payload
+
     def document_or_404(project_id: str, document_id: str) -> dict[str, Any]:
         project_or_404(project_id)
         document = workbench.database.get_document(project_id, document_id)
@@ -270,8 +298,8 @@ def create_app(settings: Settings | None = None):
         )
         return {
             "status": "ok",
-            "version": "0.13.0",
-            "database": str(active_settings.database_path),
+            "version": "0.14.0",
+            "storage": "sqlite",
             "specialization": "computer_science",
             "web_available": (configured_web / "index.html").is_file(),
         }
@@ -389,7 +417,10 @@ def create_app(settings: Settings | None = None):
             {
                 **project.to_dict(),
                 "stats": workbench.database.project_stats(project.id),
-                "runs": workbench.database.list_runs(project.id)[:1],
+                "runs": [
+                    public_run(run)
+                    for run in workbench.database.list_runs(project.id)[:1]
+                ],
             }
             for project in workbench.database.list_projects()
         ]
@@ -400,7 +431,9 @@ def create_app(settings: Settings | None = None):
         return {
             **project.to_dict(),
             "stats": workbench.database.project_stats(project.id),
-            "runs": workbench.database.list_runs(project.id),
+            "runs": [
+                public_run(run) for run in workbench.database.list_runs(project.id)
+            ],
             "reports": workbench.database.list_reports(project.id),
             "documents": [
                 public_document(document)
@@ -450,10 +483,13 @@ def create_app(settings: Settings | None = None):
     ) -> dict[str, Any]:
         project_or_404(project_id)
         try:
-            protocol = ReviewProtocol.from_dict(payload.model_dump())
+            protocol = ReviewProtocol.from_dict(
+                payload.model_dump(exclude={"amendment_reason"})
+            )
             return workbench.database.update_protocol(
                 project_id,
                 protocol,
+                amendment_reason=payload.amendment_reason,
             ).to_dict()
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -495,7 +531,7 @@ def create_app(settings: Settings | None = None):
 
     @app.get("/runs/{run_id}")
     def get_run(run_id: str) -> dict[str, Any]:
-        return run_or_404(run_id)
+        return public_run(run_or_404(run_id))
 
     @app.delete("/runs/{run_id}")
     def delete_run(
@@ -527,7 +563,7 @@ def create_app(settings: Settings | None = None):
         run, run_dir = run_directory(run_id)
         state = load_state(run_dir)
         return {
-            "run": run,
+            "run": public_run(run),
             "topic": state.topic,
             "question": state.question,
             "stage": state.stage,
@@ -599,14 +635,14 @@ def create_app(settings: Settings | None = None):
 
     @app.get("/jobs")
     def list_jobs() -> list[dict[str, Any]]:
-        return [job.to_dict() for job in jobs.list()]
+        return [public_job(job) for job in jobs.list()]
 
     @app.get("/jobs/{job_id}")
     def get_job(job_id: str) -> dict[str, Any]:
         job = jobs.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
-        return job.to_dict()
+        return public_job(job)
 
     @app.delete("/jobs/{job_id}")
     def cancel_job(job_id: str) -> dict[str, Any]:
@@ -618,7 +654,7 @@ def create_app(settings: Settings | None = None):
                 status_code=409,
                 detail="Only queued jobs can be cancelled safely",
             )
-        return job.to_dict()
+        return public_job(job)
 
     @app.get("/projects/{project_id}/papers")
     def list_papers(

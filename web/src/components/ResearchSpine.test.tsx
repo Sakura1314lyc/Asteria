@@ -41,7 +41,7 @@ const project = {
       project_id: "project-1",
       status: "waiting_for_screening",
       stage: "searched",
-      run_dir: "run",
+      artifacts_available: true,
       config: {},
       error: "",
       created_at: "2026-08-01T00:00:00Z",

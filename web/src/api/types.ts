@@ -37,7 +37,7 @@ export interface Run {
   project_id: string;
   status: RunStatus;
   stage: string;
-  run_dir: string;
+  artifacts_available: boolean;
   config: Record<string, unknown>;
   error: string;
   created_at: string;
@@ -86,6 +86,8 @@ export interface Project {
     payload: Record<string, unknown>;
   }>;
 }
+
+export type ProjectEvent = NonNullable<Project["events"]>[number];
 
 export interface Paper {
   paper_id: string;
@@ -442,7 +444,7 @@ export interface Job {
   id: string;
   name: string;
   status: string;
-  result: string | null;
+  result_available: boolean;
   error: string;
   created_at: string;
   started_at: string;

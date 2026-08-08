@@ -258,10 +258,10 @@ export function SettingsPage() {
               </div>
             </div>
             {create.isError && (
-              <p className="error-text">{create.error.message}</p>
+              <p className="error-text" role="alert">{create.error.message}</p>
             )}
             {update.isError && (
-              <p className="error-text">{update.error.message}</p>
+              <p className="error-text" role="alert">{update.error.message}</p>
             )}
           </form>
         </section>
@@ -294,7 +294,7 @@ export function SettingsPage() {
               />
             ))}
           </div>
-          {test.isError && <p className="error-text">{test.error.message}</p>}
+          {test.isError && <p className="error-text" role="alert">{test.error.message}</p>}
         </section>
       </div>
 

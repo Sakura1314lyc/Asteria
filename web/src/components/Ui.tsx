@@ -128,7 +128,7 @@ export function ErrorState({
 }) {
   const message = error instanceof Error ? error.message : "发生未知错误";
   return (
-    <div className="notice notice--error">
+    <div className="notice notice--error" role="alert" aria-atomic="true">
       <AlertTriangle size={18} />
       <div>
         <strong>数据没有加载成功</strong>
@@ -145,7 +145,7 @@ export function ErrorState({
 
 export function LoadingState({ label = "正在读取研究数据" }: { label?: string }) {
   return (
-    <div className="loading-state">
+    <div className="loading-state" role="status" aria-live="polite">
       <div className="loading-state__line" />
       <LoaderCircle className="spin" size={18} />
       <span>{label}</span>

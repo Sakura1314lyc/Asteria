@@ -208,7 +208,7 @@ export function FullTextScreening() {
             <BookOpen size={16} /> 启用全文筛选
           </Button>
           {enable.isError && (
-            <small className="error-text">{enable.error.message}</small>
+            <small className="error-text" role="alert">{enable.error.message}</small>
           )}
         </div>
         <PrismaStrip flow={prisma.data} />
@@ -526,7 +526,7 @@ function FullTextPaperDesk(props: {
           </>
         )}
         {props.error && (
-          <small className="error-text">{props.error.message}</small>
+          <small className="error-text" role="alert">{props.error.message}</small>
         )}
       </aside>
     </div>

@@ -324,7 +324,7 @@ function TitleAbstractScreening() {
             <Users size={16} /> 开始盲审
           </Button>
           {configure.isError && (
-            <small className="error-text">{configure.error.message}</small>
+            <small className="error-text" role="alert">{configure.error.message}</small>
           )}
         </section>
       )}
@@ -612,7 +612,7 @@ function PaperReview(props: {
           </>
         )}
         {props.error && (
-          <small className="error-text">{props.error.message}</small>
+          <small className="error-text" role="alert">{props.error.message}</small>
         )}
       </aside>
     </div>

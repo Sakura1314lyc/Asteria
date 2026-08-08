@@ -75,12 +75,12 @@ export function RunPage() {
   const artifacts = useQuery({
     queryKey: ["artifacts", runId],
     queryFn: () => api.listArtifacts(runId),
-    enabled: Boolean(run.data?.run_dir)
+    enabled: Boolean(run.data?.artifacts_available)
   });
   const research = useQuery({
     queryKey: ["research", runId],
     queryFn: () => api.getResearch(runId),
-    enabled: Boolean(run.data?.run_dir),
+    enabled: Boolean(run.data?.artifacts_available),
     refetchInterval: () =>
       ["queued", "running"].includes(run.data?.status ?? "") ? 1800 : false
   });

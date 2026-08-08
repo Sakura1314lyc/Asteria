@@ -42,8 +42,10 @@ class ApiWebTests(unittest.TestCase):
             app = create_app(self.make_settings(root))
             with TestClient(app) as client:
                 health = client.get("/health").json()
-                self.assertEqual(health["version"], "0.13.0")
+                self.assertEqual(health["version"], "0.14.0")
                 self.assertTrue(health["web_available"])
+                self.assertEqual(health["storage"], "sqlite")
+                self.assertNotIn("database", health)
                 self.assertEqual(client.get("/").status_code, 200)
                 self.assertIn("Asteria", client.get("/app").text)
                 self.assertEqual(client.get("/asteria-mark.svg").status_code, 200)
@@ -111,6 +113,8 @@ class ApiWebTests(unittest.TestCase):
                 ).json()
                 job = self.wait_for_job(client, start["job_id"])
                 self.assertEqual(job["status"], "completed")
+                self.assertTrue(job["result_available"])
+                self.assertNotIn("result", job)
                 run_id = start["run_id"]
                 run = client.get(f"/runs/{run_id}").json()
                 self.assertEqual(run["status"], "waiting_for_screening")
@@ -207,7 +211,13 @@ class ApiWebTests(unittest.TestCase):
                     404,
                 )
                 completed_run = client.get(f"/runs/{run_id}").json()
-                completed_run_dir = Path(completed_run["run_dir"])
+                self.assertTrue(completed_run["artifacts_available"])
+                self.assertNotIn("run_dir", completed_run)
+                self.assertNotIn("data_root", client.get(f"/runs/{run_id}").text)
+                self.assertNotIn(str(root), client.get("/projects").text)
+                stored_run = app.state.workbench.database.get_run(run_id)
+                self.assertIsNotNone(stored_run)
+                completed_run_dir = Path(stored_run["run_dir"])
                 self.assertTrue(completed_run_dir.is_dir())
                 deleted_run = client.delete(
                     f"/runs/{run_id}",
@@ -271,6 +281,56 @@ class ApiWebTests(unittest.TestCase):
                         "before": "Lifecycle review",
                         "after": "Reproducible agent review",
                     },
+                )
+
+                missing_reason = client.put(
+                    f"/projects/{project_id}/protocol",
+                    json={**updated.json()["protocol"], "year_from": 2021},
+                )
+                self.assertEqual(missing_reason.status_code, 422)
+                self.assertIn("reason", missing_reason.json()["detail"].lower())
+
+                invalid_range = client.put(
+                    f"/projects/{project_id}/protocol",
+                    json={
+                        **updated.json()["protocol"],
+                        "year_from": 2025,
+                        "year_to": 2020,
+                        "amendment_reason": "Invalid range regression",
+                    },
+                )
+                self.assertEqual(invalid_range.status_code, 422)
+
+                invalid_year = client.put(
+                    f"/projects/{project_id}/protocol",
+                    json={
+                        **updated.json()["protocol"],
+                        "year_from": 1800,
+                        "amendment_reason": "Invalid year regression",
+                    },
+                )
+                self.assertEqual(invalid_year.status_code, 422)
+
+                protocol_update = client.put(
+                    f"/projects/{project_id}/protocol",
+                    json={
+                        **updated.json()["protocol"],
+                        "year_from": 2021,
+                        "include_keywords": ["agent", "evaluation"],
+                        "amendment_reason": "Pilot search returned too many editorials",
+                    },
+                )
+                self.assertEqual(protocol_update.status_code, 200)
+                project_detail = client.get(f"/projects/{project_id}").json()
+                protocol_event = project_detail["events"][0]
+                self.assertEqual(protocol_event["event_type"], "protocol_updated")
+                self.assertEqual(
+                    protocol_event["payload"]["reason"],
+                    "Pilot search returned too many editorials",
+                )
+                self.assertEqual(
+                    protocol_event["payload"]["changes"]["year_from"],
+                    {"before": None, "after": 2021},
                 )
 
                 upload = client.post(

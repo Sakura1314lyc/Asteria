@@ -4,6 +4,29 @@
 
 > 本文件按时间保留审计轨迹。早期章节中的“暂无”与“下一阶段”是当时快照；判断当前能力时，以 README、路线图和靠前的最新审计为准。
 
+## 2026-08 研究方案修订、API 最小响应与动态反馈复审
+
+### 新增依据
+
+- [PRISMA-P checklist](https://www.prisma-statement.org/s/PRISMA-P-checklist.pdf)：系统综述方案发生重要修订时，应说明并记录修订内容及理由。
+- [PRISMA 2020 expanded checklist](https://www.prisma-statement.org/s/PRISMA_2020_expanded_checklist-yc78.pdf)：已注册方案之后的变更需要报告，并解释每项变更的理由。
+- [OWASP API excessive data exposure](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/12-API_Testing/03-Testing_for_Excessive_Data_Exposure)：API 应在服务端挑选业务需要的字段，不能返回完整内部对象再依赖客户端过滤。
+- [W3C 状态消息技术](https://www.w3.org/WAI/WCAG22/Techniques/aria/ARIA19)：异步成功、加载与错误反馈需要以无需夺取焦点的状态/警报语义通知辅助技术。
+
+### 原项目复查与处理
+
+| 级别 | 问题 | 风险 | 处理 |
+|---|---|---|---|
+| P0 | `ReviewProtocol` 可被覆盖，但没有变更原因和历史事件 | 检索范围被事后改变时无法还原研究决策 | 实际字段变化必须填写理由，服务端保存字段级 before/after 与 `protocol_updated` 事件 |
+| P0 | 运行、健康检查和作业响应直接序列化内部对象 | 暴露 SQLite、数据根目录、运行目录或后台返回值 | 新增显式 `public_run` / `public_job`，健康检查只报告存储类型 |
+| P1 | 项目事件存在于详情 API，但前端没有呈现 | 审计数据对研究者不可见，无法用于日常复核 | 项目概览新增连续修订账本，合并展示项目身份与方案修订 |
+| P1 | 若干异步错误和加载文本没有 live-region 语义 | 屏幕阅读器用户不知道操作已完成或失败 | 通用加载使用 `role=status`，错误使用 `role=alert`，成功使用礼貌播报 |
+| P1 | 方案字段较多，直接铺在概览页会稀释研究主线 | 页面重新变成通用后台表单墙 | 修订器进入受控 modal，按资格边界与结构化范围分组，概览只保留摘要 |
+
+### 验收结论
+
+隔离数据库内完成“项目资料修改 → 方案修订并填写原因 → 审计账本断言 → 文档/对话/运行/项目删除”。API 黑盒断言响应不包含测试根目录、`run_dir`、`data_root`、数据库路径或作业 `result`；浏览器排练同时覆盖 375px、横屏、放大字体、无横向溢出和 reduced-motion。公共观测站只展示明确标注为合成样例的修订记录，仍在服务端拒绝 mutation。
+
 ## 2026-08 项目生命周期、级联清理与误操作复审
 
 ### 原项目复查结论

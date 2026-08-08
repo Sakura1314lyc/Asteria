@@ -187,10 +187,17 @@ export const api = {
       { method: "DELETE" }
     ),
 
-  updateProtocol: (projectId: string, protocol: ReviewProtocol) =>
+  updateProtocol: (
+    projectId: string,
+    protocol: ReviewProtocol,
+    amendmentReason = ""
+  ) =>
     request<Project>(`/projects/${encodeURIComponent(projectId)}/protocol`, {
       method: "PUT",
-      body: JSON.stringify(protocol)
+      body: JSON.stringify({
+        ...protocol,
+        amendment_reason: amendmentReason
+      })
     }),
 
   startRun: (

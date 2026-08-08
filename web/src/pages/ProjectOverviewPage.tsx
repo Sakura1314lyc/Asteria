@@ -16,6 +16,8 @@ import { api, apiUrl } from "../api/client";
 import { RunStageRail } from "../components/RunStageRail";
 import { ResearchSpine } from "../components/ResearchSpine";
 import { ProjectManager } from "../components/ProjectManager";
+import { ProjectActivity } from "../components/ProjectActivity";
+import { ProtocolEditor } from "../components/ProtocolEditor";
 import {
   Button,
   reviewTypeLabel,
@@ -138,7 +140,7 @@ export function ProjectOverviewPage() {
               先接入模型 API
             </Link>
           )}
-          {start.isError && <small className="error-text">{start.error.message}</small>}
+          {start.isError && <small className="error-text" role="alert">{start.error.message}</small>}
         </div>
       </section>
 
@@ -193,7 +195,10 @@ export function ProjectOverviewPage() {
 
         <aside className="overview-aside">
           <section className="protocol-note">
-            <span className="eyebrow">研究方案</span>
+            <div className="protocol-note__header">
+              <span className="eyebrow">研究方案</span>
+              <ProtocolEditor project={project} />
+            </div>
             <h3>{reviewTypeLabel(project.review_type)}</h3>
             <dl>
               <div>
@@ -251,6 +256,8 @@ export function ProjectOverviewPage() {
           </div>
         </aside>
       </div>
+
+      <ProjectActivity events={project.events} />
     </div>
   );
 }

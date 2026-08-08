@@ -42,6 +42,7 @@ Infrastructure: SQLite / FTS5 / file store / retrievers / LLM
 - `web/`: React、TypeScript、Vite 源码与前端测试。
 - `src/paper_agent/web_dist/`: 生产构建，由 FastAPI 以 `/app` 提供。
 - Web 通过 REST API 消费项目与运行状态，不直接读取 SQLite 或运行目录。
+- REST API 用显式公开视图挑选响应字段；存储路径、数据根目录和后台作业内部结果不会交给浏览器。
 - 前端使用轮询获取持久运行状态；事件和运行产物仍以数据库与文件为事实来源。
 
 ### Workflow
@@ -61,6 +62,7 @@ Infrastructure: SQLite / FTS5 / file store / retrievers / LLM
 ### Infrastructure
 
 - SQLite 使用 WAL、外键和 busy timeout。
+- 项目身份与方案修订以 `project_events` 保存字段级 before/after；方案实际变化必须附带修订原因。
 - 文件内容不放入数据库；数据库只保存路径、哈希和索引。
 - FTS5 存储页码级文本块。
 - 检索器实现统一 `Retriever` 协议。
@@ -81,6 +83,7 @@ erDiagram
     PROJECTS ||--o{ FULLTEXT_SCREENING_RESOLUTIONS : arbitrates
     PAPERS ||--o{ FULLTEXT_SCREENING_DECISIONS : receives
     PROJECTS ||--o{ RUNS : has
+    PROJECTS ||--o{ PROJECT_EVENTS : audits
     RUNS ||--o{ RUN_EVENTS : emits
     PROJECTS ||--o{ DOCUMENTS : owns
     PAPERS o|--o{ DOCUMENTS : full_text
