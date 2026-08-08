@@ -6,7 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f6f61.svg)](LICENSE)
 
-[![Version](https://img.shields.io/badge/version-0.14.0-246bfd.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.14.1-246bfd.svg)](CHANGELOG.md)
 
 [在线观测站](https://asteria-observatory.vercel.app/app) · [本地安装](#五分钟本地体验) · [架构文档](docs/ARCHITECTURE.md)
 

@@ -42,7 +42,7 @@ class ApiWebTests(unittest.TestCase):
             app = create_app(self.make_settings(root))
             with TestClient(app) as client:
                 health = client.get("/health").json()
-                self.assertEqual(health["version"], "0.14.0")
+                self.assertEqual(health["version"], "0.14.1")
                 self.assertTrue(health["web_available"])
                 self.assertEqual(health["storage"], "sqlite")
                 self.assertNotIn("database", health)
@@ -215,6 +215,9 @@ class ApiWebTests(unittest.TestCase):
                 self.assertNotIn("run_dir", completed_run)
                 self.assertNotIn("data_root", client.get(f"/runs/{run_id}").text)
                 self.assertNotIn(str(root), client.get("/projects").text)
+                project_response = client.get(f"/projects/{project_id}")
+                self.assertNotIn(str(root), project_response.text)
+                self.assertNotIn('"path"', project_response.text)
                 stored_run = app.state.workbench.database.get_run(run_id)
                 self.assertIsNotNone(stored_run)
                 completed_run_dir = Path(stored_run["run_dir"])

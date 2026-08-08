@@ -60,7 +60,7 @@ def create_app(settings: Settings | None = None):
 
     app = FastAPI(
         title="Paper Research Agent API",
-        version="0.14.0",
+        version="0.14.1",
         description=(
             "Local-first API for literature discovery, screening, evidence "
             "extraction, quality appraisal, full-text search, and report generation."
@@ -258,6 +258,20 @@ def create_app(settings: Settings | None = None):
         payload["result_available"] = payload.pop("result") is not None
         return payload
 
+    def public_report(report: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: report.get(key)
+            for key in (
+                "id",
+                "project_id",
+                "run_id",
+                "title",
+                "format",
+                "version",
+                "created_at",
+            )
+        }
+
     def document_or_404(project_id: str, document_id: str) -> dict[str, Any]:
         project_or_404(project_id)
         document = workbench.database.get_document(project_id, document_id)
@@ -298,7 +312,7 @@ def create_app(settings: Settings | None = None):
         )
         return {
             "status": "ok",
-            "version": "0.14.0",
+            "version": "0.14.1",
             "storage": "sqlite",
             "specialization": "computer_science",
             "web_available": (configured_web / "index.html").is_file(),
@@ -434,7 +448,10 @@ def create_app(settings: Settings | None = None):
             "runs": [
                 public_run(run) for run in workbench.database.list_runs(project.id)
             ],
-            "reports": workbench.database.list_reports(project.id),
+            "reports": [
+                public_report(report)
+                for report in workbench.database.list_reports(project.id)
+            ],
             "documents": [
                 public_document(document)
                 for document in workbench.database.list_documents(project.id)

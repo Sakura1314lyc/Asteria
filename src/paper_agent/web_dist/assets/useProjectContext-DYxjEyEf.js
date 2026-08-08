@@ -1,0 +1,1 @@
+import{S as e}from"./index-DrH2UlsF.js";function t(){return e()}export{t};
